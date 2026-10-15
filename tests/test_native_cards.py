@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from l4d2_qq_bot.app import BotApplication
-from l4d2_qq_bot.cards.markdown import markdown_card
-from l4d2_qq_bot.cards.views import server_card
+from l4d2_qq_bot.cards.markdown import markdown_card, markdown_text
+from l4d2_qq_bot.cards.views import server_card, voice_card
 from l4d2_qq_bot.config import ServerConfig, Settings
 from l4d2_qq_bot.demo import sample_config, sample_event, sample_statuses
-from l4d2_qq_bot.domain import Card, CardSection, Player
+from l4d2_qq_bot.domain import Card, CardSection, Player, VoiceStatus
 from l4d2_qq_bot.qq.client import QQAPIError, QQTransportError
 from l4d2_qq_bot.qq.protocol import GroupMessage
 from l4d2_qq_bot.qq.replies import ReplySession, connection_keyboard
@@ -62,6 +62,47 @@ def test_native_player_list_does_not_bullet_empty_or_unknown_states(players):
     status = replace(sample_statuses()[0], players=players)
     content = markdown_card(server_card(status))
     assert not any(line.startswith("- ") for line in content.splitlines())
+
+
+def test_native_voice_members_are_compact_list_items_with_literal_names():
+    card = voice_card(
+        VoiceStatus(
+            "1服",
+            True,
+            count=5,
+            names=("甲", "地图: [成员]*", "- <qqbot-at-everyone />", "2. 成员", " \x00\u202e "),
+        )
+    )
+    assert markdown_card(card) == (
+        "# 1服 语音频道\n\n**在线人数: 5**\n\n"
+        "- 甲\n"
+        "- 地图: &#91;成员&#93;\\*\n"
+        "- \\- &lt;qqbot-at-everyone /&gt;\n"
+        "- 2. 成员\n"
+        "- 匿名成员"
+    )
+    assert card.content == (
+        "1服 语音频道\n在线人数: 5\n"
+        "- 甲\n- 地图: [成员]*\n- - <qqbot-at-everyone />\n- 2. 成员\n- 匿名成员"
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        VoiceStatus("1服", True, count=0, names=()),
+        VoiceStatus("1服", True, count=2, names=None),
+        VoiceStatus("1服", True, error="语音查询失败。"),
+    ],
+)
+def test_native_voice_states_are_not_list_items(status):
+    content = markdown_card(voice_card(status))
+    assert not any(line.startswith("- ") for line in content.splitlines())
+
+
+def test_plain_list_markers_outside_voice_members_remain_escaped():
+    content = markdown_text("任务结果\n- 地图[测试].vpk")
+    assert content == "# 任务结果\n\n\\- 地图&#91;测试&#93;.vpk"
 
 
 @pytest.mark.parametrize("with_voice", [False, True])

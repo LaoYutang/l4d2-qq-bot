@@ -37,7 +37,6 @@ def visible_lines(content):
         server_card(sample_statuses()[1]),
         server_card(sample_statuses()[2]),
         overview_card(sample_statuses()),
-        voice_card(VoiceStatus("1服", True, count=2, names=("甲", "Alice"))),
         voice_card(VoiceStatus("1服", True, count=0, names=())),
         voice_card(VoiceStatus("1服", True, error="语音查询失败。")),
     ],
@@ -142,6 +141,10 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
             assert "工坊" not in payload["markdown"]["content"]
             assert "查询服务器名语音" in payload["markdown"]["content"]
             assert "服务器名语音" in payload["markdown"]["content"]
+        if command.startswith("connect "):
+            assert (
+                "> 地址: 203.0.113.10:27015\n> 地图: 死亡中心 · 旅馆\n> 人数: 3/8\n> 延迟: 42ms"
+            ) in payload["markdown"]["content"]
         if command in {"语音1服", "查询1服语音", "1服语音"}:
             voice.query.assert_awaited_once()
             query.query.assert_not_awaited()
@@ -334,6 +337,38 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
         assert all(
             len(call.args[3]["markdown"]["content"].encode("utf-8")) <= 3200 for call in calls
         )
+    finally:
+        await app.close()
+
+
+async def test_voice_members_keep_compact_list_format_and_order_across_pages():
+    client = AsyncMock()
+    app = BotApplication(client, sample_config(), Settings(_env_file=None), None, Mock())
+    message = GroupMessage.from_payload(sample_event())
+    names = tuple(f"成员{index:03d} [原名]* <用户>" for index in range(120))
+    card = voice_card(VoiceStatus("合作服", True, count=len(names), names=names))
+    pages = markdown_text_pages(card.content)
+    assert "".join(plain for _, plain in pages) == card.content
+    try:
+        await app._card(ReplySession(client, message), card)
+        calls = client.send_group.await_args_list
+        assert 1 < len(calls) <= 5
+        assert [call.args[2] for call in calls] == list(range(1, len(calls) + 1))
+        assert all(
+            call.args[1] == message.message_id and call.args[3]["msg_type"] == 2 for call in calls
+        )
+        bodies = [call.args[3]["markdown"]["content"] for call in calls]
+        assert all(body.startswith("- ") for body in bodies[1:])
+        assert sum(line.startswith("- ") for body in bodies for line in body.splitlines()) == len(
+            names
+        )
+        assert all("\n\n- " not in body for body in bodies[1:])
+        assert all(len(body.encode("utf-8")) <= 3200 for body in bodies)
+        assert [line for body in bodies for line in visible_lines(body)] == [
+            "合作服 语音频道",
+            f"在线人数: {len(names)}",
+            *names,
+        ]
     finally:
         await app.close()
 

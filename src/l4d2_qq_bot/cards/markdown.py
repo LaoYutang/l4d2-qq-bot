@@ -17,8 +17,20 @@ def escape_text(value: str, limit: int = 200) -> str:
     return value.replace("[", "&#91;").replace("]", "&#93;")
 
 
+def _is_voice_content(lines: list[str]) -> bool:
+    return (
+        len(lines) >= 2
+        and lines[0].endswith(" 语音频道")
+        and re.fullmatch(r"在线人数: \d+", lines[1]) is not None
+    )
+
+
 def markdown_text(
-    content: str, *, player_list_continuation: bool = False, overview_continuation: bool = False
+    content: str,
+    *,
+    player_list_continuation: bool = False,
+    overview_continuation: bool = False,
+    voice_list_continuation: bool = False,
 ) -> str:
     """Style the existing reply body without adding titles, labels or footer text."""
     blocks: list[str] = []
@@ -27,9 +39,11 @@ def markdown_text(
     lines = content.splitlines()
     is_overview = overview_continuation or "L4D2 服务器概览" in lines[:2]
     is_server = not is_overview and any(line.startswith("地图: ") for line in lines[:4])
+    is_voice = voice_list_continuation or _is_voice_content(lines)
     for line in lines:
         padding = line[: len(line) - len(line.lstrip())]
-        text = escape_text(line.lstrip(), len(line))
+        is_voice_member = is_voice and line.startswith("- ")
+        text = escape_text(line[2:] if is_voice_member else line.lstrip(), len(line))
         if not text:
             blocks.append("")
             continue
@@ -41,9 +55,9 @@ def markdown_text(
         short = len(text.encode("utf-8")) <= 1000
         is_quote = not padding and (
             (is_overview and line.startswith(("服务器: ", "人数: ")))
-            or (is_server and line.startswith(("地图: ", "人数: ", "延迟: ")))
+            or (is_server and line.startswith(("地址: ", "地图: ", "人数: ", "延迟: ")))
         )
-        if is_player or (is_overview and padding):
+        if is_player or is_voice_member or (is_overview and padding):
             item = f"- {text}"
             if blocks and blocks[-1].startswith("- "):
                 blocks[-1] += f"\n{item}"
@@ -80,9 +94,11 @@ def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[st
     start = 0
     player_list_start = content.find("\n在线玩家:\n")
     is_overview = "L4D2 服务器概览" in content.splitlines()[:2]
+    is_voice = _is_voice_content(content.splitlines())
     while start < len(content):
         player_list_continuation = 0 <= player_list_start < start
         overview_continuation = is_overview and start > 0
+        voice_list_continuation = is_voice and start > 0
         lower, upper = 0, min(len(content) - start, max_bytes)
         while lower < upper:
             middle = (lower + upper + 1) // 2
@@ -90,6 +106,7 @@ def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[st
                 content[start : start + middle],
                 player_list_continuation=player_list_continuation,
                 overview_continuation=overview_continuation,
+                voice_list_continuation=voice_list_continuation,
             )
             if len(formatted.encode("utf-8")) <= max_bytes:
                 lower = middle
@@ -107,6 +124,7 @@ def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[st
             plain,
             player_list_continuation=player_list_continuation,
             overview_continuation=overview_continuation,
+            voice_list_continuation=voice_list_continuation,
         )
         if formatted.strip():
             pages.append((formatted, plain))
