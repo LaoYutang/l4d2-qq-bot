@@ -20,7 +20,7 @@ from l4d2_qq_bot.services.management import ManagementService
 def visible_lines(content):
     lines = []
     for line in content.splitlines():
-        line = re.sub(r"^(?:#{1,2} |> )", "", line)
+        line = re.sub(r"^(?:#{1,2} |> |- )", "", line)
         if line.startswith("**") and line.endswith("**"):
             line = line[2:-2]
         line = html.unescape(re.sub(r"\\(.)", r"\1", line))
@@ -278,6 +278,15 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
             call.args[1] == message.message_id and call.args[3]["msg_type"] == 2 for call in calls
         )
         assert all("keyboard" not in call.args[3] for call in calls[:-1])
+        assert (
+            sum(
+                line.startswith("- ")
+                for call in calls
+                for line in call.args[3]["markdown"]["content"].splitlines()
+            )
+            == 200
+        )
+        assert all(call.args[3]["markdown"]["content"].startswith("- ") for call in calls[1:])
         button = calls[-1].args[3]["keyboard"]["content"]["rows"][0]["buttons"][0]
         assert button["render_data"]["label"] == "🎮 进入服务器"
         assert button["action"]["data"] == "https://connect.example/203.0.113.10:27015"
