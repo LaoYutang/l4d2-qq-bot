@@ -17,6 +17,7 @@ LABEL org.opencontainers.image.title="l4d2-qq-bot" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     L4D2_CARD_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
+    L4D2_CONFIG_PATH=/app/data/config.json \
     L4D2_DISCOVERY_PATH=/app/data/qq-discovery.json
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates fonts-noto-cjk \
@@ -25,8 +26,9 @@ RUN apt-get update \
     && useradd --uid 10001 --gid bot --create-home bot
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
-COPY config.example.json README.md LICENSE NOTICE.md ./
+COPY --chmod=0644 config.example.json README.md LICENSE NOTICE.md ./
 RUN mkdir /app/artifacts /app/data && chown bot:bot /app/artifacts /app/data
 USER 10001:10001
+EXPOSE 8080
 ENTRYPOINT ["/app/.venv/bin/l4d2-qq-bot"]
-CMD ["run", "--config", "/app/config.json"]
+CMD ["run", "--config", "/app/data/config.json"]

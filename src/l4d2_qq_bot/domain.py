@@ -79,3 +79,4 @@ class Card:
     accent: str = "#b5f36d"
     footer: str = "L4D2 · SERVER INTELLIGENCE"
     links: tuple[CardLink, ...] = ()
+    content: str = ""

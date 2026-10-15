@@ -2,6 +2,8 @@
   "safe_mode": true,
   "connect_base_url": "https://steam-connect.laoyutang.cn",
   "map_name_url": "",
+  "heybox_bot_id": "",
+  "heybox_token": "",
   "query": {
     "timeout_seconds": 3.0,
     "concurrency": 4,
@@ -26,8 +28,10 @@
           "address": "127.0.0.1:27015",
           "connect_url": "",
           "hh_channel_id": "",
+          "rcon_password": "",
           "rcon_password_env": "",
           "panel_url": "",
+          "panel_token": "",
           "panel_token_env": ""
         },
         {

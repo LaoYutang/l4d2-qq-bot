@@ -60,6 +60,8 @@ class CardRenderer:
         return lines
 
     def render(self, card: Card) -> bytes:
+        if card.content:
+            return self._render_content(card)
         content_width = self.width - self.padding * 2 - 48
         layouts: list[tuple[str, list[str], int]] = []
         height = 212
@@ -119,3 +121,18 @@ class CardRenderer:
         if len(data) > 3 * 1024 * 1024:
             raise ValueError("卡片超过 3 MiB，需要拆分后再上传")
         return data
+
+    def _render_content(self, card: Card) -> bytes:
+        lines = []
+        for line in card.content.splitlines():
+            lines.extend(self._wrap(line, self.width - 96) if line else [""])
+        maximum = (self.max_height - 96) // 38
+        if len(lines) > maximum:
+            lines = lines[: maximum - 1] + ["…"]
+        image = Image.new("RGB", (self.width, max(172, 96 + 38 * len(lines))), "#101711")
+        draw = ImageDraw.Draw(image)
+        for index, line in enumerate(lines):
+            draw.text((48, 48 + index * 38), line, font=self.body_font, fill="#e4ecdd")
+        output = io.BytesIO()
+        image.save(output, format="PNG", optimize=True)
+        return output.getvalue()

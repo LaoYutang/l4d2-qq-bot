@@ -7,15 +7,19 @@ import logging
 import sys
 from pathlib import Path
 
+import aiohttp
 from pydantic import ValidationError
 
 from . import __version__
 from .cards.renderer import CardRenderer
 from .cards.views import server_card
-from .config import Settings, load_config
+from .config import AppConfig, Settings, load_config
+from .integrations.http import ExternalHTTP
+from .integrations.maps import MapNameClient
 from .qq.client import QQAPIError, QQTransportError
 from .qq.gateway import GatewayFatalError
 from .runtime import serve
+from .services.queries import QueryCoordinator
 from .services.query import QueryService
 
 
@@ -35,11 +39,34 @@ def create_parser() -> argparse.ArgumentParser:
     query.add_argument("--output", type=Path, default=Path("artifacts/live-card.png"))
     query.add_argument("--allow-private", action="store_true", help="允许查询自己管理的私网地址")
     query.add_argument("--timeout", type=float, default=3.0)
+    query.add_argument("--config", type=Path, default=None)
     run = subparsers.add_parser("run", help="连接 QQ WS，处理配置群中的真实消息")
     run.add_argument("--config", type=Path, default=None)
+    configure = subparsers.add_parser("configure", help="只启动密码保护配置界面，不连接 QQ")
+    configure.add_argument("--config", type=Path, default=None)
     discover = subparsers.add_parser("discover", help="连接 QQ，只发现群 OpenID，不回复消息")
     discover.add_argument("--duration", type=float, default=120, help="监听秒数，0 表示持续运行")
     return parser
+
+
+async def local_query(args, settings: Settings):
+    path = args.config or settings.config_path
+    config = load_config(path) if path.exists() else AppConfig()
+    async with aiohttp.ClientSession(trust_env=True) as session:
+        maps = MapNameClient(
+            ExternalHTTP(
+                session,
+                timeout=config.integrations.timeout_seconds,
+                concurrency=config.integrations.concurrency,
+            ),
+            config.map_name_url,
+        )
+        try:
+            return await QueryCoordinator(QueryService(timeout=args.timeout), maps).address(
+                args.address, allow_private=args.allow_private
+            )
+        finally:
+            await maps.close()
 
 
 def main() -> int:
@@ -57,8 +84,22 @@ def main() -> int:
                     raise ValueError("监听时长应在 0–3600 秒之间")
                 asyncio.run(serve(settings, None, duration_seconds=args.duration))
             else:
-                config = load_config(args.config or settings.config_path)
-                asyncio.run(serve(settings, config))
+                path = args.config or settings.config_path
+                config = load_config(path) if path.exists() else AppConfig()
+                asyncio.run(serve(settings, config, config_path=path))
+            return 0
+        if args.command == "configure":
+            from aiohttp import web
+
+            from .config_store import ConfigStore
+            from .web import create_web_app
+
+            web.run_app(
+                create_web_app(settings, ConfigStore(args.config or settings.config_path)),
+                host=settings.web_host,
+                port=settings.web_port,
+                access_log=None,
+            )
             return 0
         if args.command == "validate":
             config = load_config(args.config or settings.config_path)
@@ -82,11 +123,7 @@ def main() -> int:
         else:
             if not 0.1 <= args.timeout <= 15:
                 raise ValueError("timeout 应在 0.1–15 秒范围内")
-            status = asyncio.run(
-                QueryService(timeout=args.timeout).query(
-                    args.address, allow_private=args.allow_private
-                )
-            )
+            status = asyncio.run(local_query(args, settings))
             card = server_card(status, safe_mode=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_bytes(renderer.render(card))

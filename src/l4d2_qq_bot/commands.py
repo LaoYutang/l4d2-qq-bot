@@ -18,6 +18,11 @@ class CommandKind(StrEnum):
     CONNECT = "connect"
     VOICE = "voice"
     WORKSHOP = "workshop"
+    GROUP_ID = "group_id"
+    USER_ID = "user_id"
+    RCON = "rcon"
+    RESTART = "restart"
+    FLASH = "flash"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,14 +32,27 @@ class Command:
     page: int = 1
 
 
-def parse_command(content: str) -> Command | None:
+def command_text(content: str) -> str:
     # QQ's current event already strips the bot mention; older payloads may retain it.
     content = re.sub(r"^\s*<@!?[A-Za-z0-9_-]+>\s*", "", content).strip()
-    content = content.removeprefix("/").strip()
+    return content.removeprefix("/").strip()
+
+
+def parse_command(content: str) -> Command | None:
+    content = command_text(content)
+    if content.casefold() in {"获取群id", "群id"}:
+        return Command(CommandKind.GROUP_ID)
+    if content.casefold() in {"获取用户id", "获取我的id", "我的id"}:
+        return Command(CommandKind.USER_ID)
     if content in {"帮助", "help"}:
         return Command(CommandKind.HELP)
     if content == "综合查询":
         return Command(CommandKind.OVERVIEW)
+    for prefix, kind in (("设置", CommandKind.RCON), ("重启", CommandKind.RESTART)):
+        if content.startswith(prefix):
+            return Command(kind, content.removeprefix(prefix).strip())
+    if match := re.search(r"https?://qfile\.qq\.com/q/[A-Za-z0-9_-]+(?=$|[\s。，；,;?#])", content):
+        return Command(CommandKind.FLASH, match[0])
     if content.startswith("语音"):
         argument = content.removeprefix("语音").strip()
         if not argument:
@@ -44,26 +62,26 @@ def parse_command(content: str) -> Command | None:
         identifier = workshop_id_from_url(match[1]) if "://" in match[1] else item_id(match[1])
         if not identifier:
             raise ValueError("请输入有效的 Steam 工坊链接或条目 ID")
-        page = int(match[2] or "1")
-        if page < 1:
+        page = int(match[2]) if match[2] else 0
+        if match[2] and page < 1:
             raise ValueError("页码从 1 开始")
         return Command(CommandKind.WORKSHOP, identifier, page)
     if match := re.fullmatch(r"(?:服务器列表|服务器地址|连接指令)(?:\s+([0-9]{1,3}))?", content):
-        page = int(match[1] or "1")
-        if page < 1:
+        page = int(match[1]) if match[1] else 0
+        if match[1] and page < 1:
             raise ValueError("页码从 1 开始")
         return Command(CommandKind.ADDRESSES, page=page)
     if content.startswith("查询"):
         argument = content.removeprefix("查询").strip()
         if not argument:
-            raise ValueError("请输入服务器名称，例如：查询 合作服")
+            raise ValueError("请输入服务器名称，例如：查询 主服务器")
         return Command(CommandKind.QUERY, argument)
     if match := re.fullmatch(r"connect\s+(.+)", content, flags=re.IGNORECASE):
         return Command(CommandKind.CONNECT, parse_address(match[1]).address)
     for match in re.finditer(r"https?://[^\s<>]+", content):
         identifier = workshop_id_from_url(match[0].rstrip("。，；,;"))
         if identifier:
-            return Command(CommandKind.WORKSHOP, identifier)
+            return Command(CommandKind.WORKSHOP, identifier, page=0)
     return None
 
 

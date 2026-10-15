@@ -144,13 +144,17 @@ class WorkshopClient:
             return WorkshopResult(
                 identifier, title=title, total_count=1, items=(self._item(identifier, first),)
             )
-        selected = children[: self.max_items]
+        include_parent = bool(self.api_url and public_link(first.get("file_url")))
+        selected = children[: self.max_items - int(include_parent)]
         details = await self._details(selected) if selected else {}
+        if include_parent:
+            selected.insert(0, identifier)
+            details[identifier] = first
         return WorkshopResult(
             identifier,
             title=title,
             collection=True,
-            total_count=len(children),
+            total_count=len(children) + int(include_parent),
             items=tuple(self._item(child, details.get(child)) for child in selected),
         )
 

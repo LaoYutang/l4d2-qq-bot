@@ -37,14 +37,22 @@ class ExternalHTTP:
         self.timeout = timeout
         self._semaphore = asyncio.Semaphore(concurrency)
 
-    async def read(self, method: str, url: str, *, max_bytes: int = 1024 * 1024, **kwargs) -> bytes:
+    async def read(
+        self,
+        method: str,
+        url: str,
+        *,
+        max_bytes: int = 1024 * 1024,
+        timeout_seconds: float | None = None,
+        **kwargs,
+    ) -> bytes:
         async with self._semaphore:
             try:
                 async with self.session.request(
                     method,
                     url,
                     allow_redirects=False,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds or self.timeout),
                     **kwargs,
                 ) as response:
                     if response.status != 200:

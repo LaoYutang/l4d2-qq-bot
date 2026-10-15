@@ -9,7 +9,11 @@
 | `heybox_voice.py` | `integrations/heybox.py` | 保留 API 路径、COMMON_PARAMS、token 请求头、昵称选择与分页协议；改用独立共享会话、有界缓存、请求合并、严格数据校验与无敏感数据日志 |
 | `l4d2_query.py` | `services/query.py`、`integrations/maps.py` | 参考 A2S 与地图名称协议、地图缓存 1 小时；采用原生异步查询、DNS 固定与真实状态区分 |
 | `workshop_utils.py` | `integrations/workshop.py` | 兼容原 JSON ID 数组 API 与 children 结构；默认增加 Steam 官方详情 / 合集接口，限制批量并保留没有下载地址的元信息 |
+| `rcon_client.py`、`main.py` | `integrations/rcon.py`、`services/management.py` | 沿用 Source RCON 协议、原版结果文案与闪传步骤；改为异步、有界读取、管理员精确匹配、确认和审计 |
+| `panel_client.py` | `integrations/panel.py`、`services/management.py` | 沿用解析 / 下载路径、字段、选择和结果格式；增加实际扩展名检查、响应边界及禁止自动重试 |
+| `config_manager.py`、`pages/settings/*` | `config_store.py`、`web.py`、`static/*` | 页面布局、样式及交互从原版改写，保留版本检查和原子保存；替换 Page Bridge 为环境密码直接鉴权，适配官方 OpenID 与新版字段 |
+| `main.py` 的回复正文 | `cards/views.py` | 沿用单服、总览、语音、工坊与地址列表文案；共用 Markdown / PNG 输出，保留真实未知状态和脱敏 |
 
-未引入 AstrBot 的事件装饰器、logger 或生命周期，也未迁移上游 RCON / 面板管理实现。
+未引入 AstrBot 的事件装饰器、logger 或生命周期。新增 / 改写模块继续遵循上游 AGPL-3.0 和 LaoYutang 归属。
 
 为后续 API 复用保持一致，本项目按 AGPL-3.0-only 初始化，许可证全文见 `LICENSE`。运行依赖各自保留其许可证，中文字体由系统 / 容器软件包提供，不包含 Windows 字体文件。
