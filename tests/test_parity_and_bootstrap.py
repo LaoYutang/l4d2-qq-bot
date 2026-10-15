@@ -61,7 +61,7 @@ def test_upstream_reply_contract_has_no_product_explanations():
     temporary = server_card(status, temporary=True).content
     assert "地址: 203.0.113.10:27015" in temporary and "🎧" not in temporary
     overview = overview_card([status, sample_statuses()[1]]).content
-    assert overview.startswith("=== L4D2 服务器概览 ===\n服务器: 1/2 在线\n人数: 1/8\n")
+    assert overview.startswith("L4D2 服务器概览\n服务器: 1/2 在线\n人数: 1/8\n")
     assert "[合作服] 真实服(测试)" in overview and "| 旅馆" not in overview
     assert overview.endswith("[对抗服] 离线或无法连接")
     assert voice_card(VoiceStatus("1服", True, count=0, names=())).content == (

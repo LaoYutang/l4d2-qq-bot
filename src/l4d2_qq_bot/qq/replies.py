@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 MARKDOWN_REJECTIONS = {"304036", "40034127", "50056"}
 KEYBOARD_REJECTIONS = {"304057"}
 URL_REJECTIONS = {"304003", "40054010"}
+MAX_LINK_BUTTONS = 25
 
 
 def split_text(text: str, max_bytes: int = 3500) -> list[str]:
@@ -68,12 +69,15 @@ def connection_keyboard(label: str, url: str, *, command: str = "") -> dict[str,
 
 
 def link_keyboard(links: tuple[CardLink, ...]) -> dict[str, Any]:
+    if len(links) > MAX_LINK_BUTTONS:
+        raise ValueError(f"单条卡片最多支持 {MAX_LINK_BUTTONS} 个链接按钮")
     buttons = []
-    for index, link in enumerate(links[:5]):
+    for index, link in enumerate(links):
         button = connection_keyboard(link.label, link.url)["content"]["rows"][0]["buttons"][0]
         button["id"] = f"link_{index}"
         buttons.append(button)
-    return {"content": {"rows": [{"buttons": buttons}]}}
+    rows = [{"buttons": buttons[index : index + 5]} for index in range(0, len(buttons), 5)]
+    return {"content": {"rows": rows}}
 
 
 class ReplySession:
@@ -95,6 +99,11 @@ class ReplySession:
         self.sent_count += 1
 
     async def text(self, text: str) -> None:
+        """Send IDs, notices and operation feedback without Markdown styling."""
+        await self._plain_text(text)
+
+    async def _plain_text(self, text: str) -> None:
+        """Bound ordinary text replies and share the passive message budget."""
         chunks = split_text(text)
         if len(chunks) > 5 - self.sequence:
             raise ValueError("文字过长，请缩小查询范围或使用服务器列表页码")
@@ -106,10 +115,16 @@ class ReplySession:
         await self.send({"msg_type": 7, "media": {"file_info": media.file_info}})
 
     async def markdown(
-        self, content: str, *, keyboard: dict[str, Any] | None = None, fallback_text: str = ""
+        self,
+        content: str,
+        *,
+        keyboard: dict[str, Any] | None = None,
+        fallback_text: str = "",
+        plain_content: str | None = None,
     ) -> None:
+        plain = content if plain_content is None else plain_content
         if not self._markdown_available:
-            await self.text(content + (f"\n\n{fallback_text}" if fallback_text else ""))
+            await self._plain_text(plain + (f"\n\n{fallback_text}" if fallback_text else ""))
             return
         payload: dict[str, Any] = {"msg_type": 2, "markdown": {"content": content}}
         if keyboard is not None and self._keyboard_available:
@@ -137,17 +152,19 @@ class ReplySession:
                 logger.warning("%s（HTTP %s，业务码 %s）", reason, exc.status, exc.code)
                 # Only replace a confirmed rejection. Keep the original passive msg_id.
                 replacement = content + f"\n\n> {reason}。"
+                plain_replacement = plain + f"\n\n{reason}。"
                 if fallback_text:
                     replacement += f"\n\n{fallback_text}"
-                await self.markdown(replacement)
+                    plain_replacement += f"\n\n{fallback_text}"
+                await self.markdown(replacement, plain_content=plain_replacement)
                 return
             if code not in MARKDOWN_REJECTIONS and exc.status != 403:
                 raise
             self._markdown_available = False
             logger.warning("原生 Markdown 被平台拒绝（HTTP %s，业务码 %s）", exc.status, exc.code)
-        await self.text(
+        await self._plain_text(
             "原生卡片被平台拒绝，请检查应用 Markdown 权限。\n\n"
-            + content
+            + plain
             + (f"\n\n{fallback_text}" if fallback_text else "")
         )
 

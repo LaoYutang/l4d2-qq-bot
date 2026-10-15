@@ -9,19 +9,25 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from .cards.markdown import markdown_card
+from .cards.markdown import markdown_card, markdown_text_pages
 from .cards.renderer import CardRenderer
-from .cards.views import overview_card, server_card, voice_card, workshop_card
+from .cards.views import clean_text, overview_card, server_card, voice_card, workshop_card
 from .commands import Command, CommandKind, match_server, parse_command
 from .config import AppConfig, GroupConfig, ServerConfig, Settings
-from .domain import Card, CardSection, VoiceStatus
+from .domain import Card, CardLink, CardSection, VoiceStatus
 from .integrations.heybox import HeyboxVoiceClient
 from .integrations.maps import MapNameClient
 from .integrations.workshop import WorkshopClient
 from .qq.client import QQAPIError, QQClient, QQTransportError
 from .qq.discovery import DiscoveryRecorder
 from .qq.protocol import GroupMessage
-from .qq.replies import ReplySession, connection_keyboard, link_keyboard, split_text
+from .qq.replies import (
+    MAX_LINK_BUTTONS,
+    ReplySession,
+    connection_keyboard,
+    link_keyboard,
+    split_text,
+)
 from .services.management import ManagementService
 from .services.queries import QueryCoordinator
 from .services.query import QueryService, TargetNotAllowed
@@ -250,27 +256,47 @@ class BotApplication:
         *,
         server: ServerConfig | None = None,
         config: AppConfig | None = None,
+        fallback_text: str = "",
+        plain_text: bool = False,
     ) -> None:
+        if plain_text:
+            content = card.content or "\n".join(
+                value for value in (card.title, card.subtitle) if value
+            )
+            if card.links:
+                content += "\n" + "\n".join(f"{link.label}: {link.url}" for link in card.links)
+            await reply.text(content)
+            return
         if self.settings.reply_format == "markdown":
             keyboard = (
                 link_keyboard(card.links) if card.links and self.settings.connect_buttons else None
             )
             command = (
-                f"connect {server.address}" if server and self.settings.connect_buttons else ""
+                f"connect {server.address}"
+                if server and self.settings.connect_buttons
+                else fallback_text
             )
             if server and self.settings.connect_buttons:
                 url = connect_url(server, (config or self.config).connect_base_url)
                 label = "进入服务器" if url else "连接指令"
                 keyboard = connection_keyboard(label, url, command=command)
-            pages = split_text(markdown_card(card, max_bytes=100000), max_bytes=3200)
+            pages = (
+                markdown_text_pages(card.content)
+                if card.content
+                else [
+                    (page, None)
+                    for page in split_text(markdown_card(card, max_bytes=100000), max_bytes=3200)
+                ]
+            )
             if len(pages) > 5 - reply.sequence:
                 await reply.text("查询结果过长，请使用页码缩小范围。")
                 return
-            for index, page in enumerate(pages):
+            for index, (page, plain) in enumerate(pages):
                 await reply.markdown(
                     page,
                     keyboard=keyboard if index == len(pages) - 1 else None,
                     fallback_text=command if index == len(pages) - 1 else "",
+                    plain_content=plain,
                 )
             return
         if self.renderer is None:
@@ -410,7 +436,11 @@ class BotApplication:
                 if resources.voice is not None
                 else VoiceStatus(server.name, False, error="未配置黑盒语音客户端。")
             )
-            await self._card(reply, voice_card(status, safe_mode=config.safe_mode))
+            await self._card(
+                reply,
+                voice_card(status, safe_mode=config.safe_mode),
+                plain_text=status.count in (None, 0),
+            )
             return
         if command.kind == CommandKind.WORKSHOP:
             if resources.workshop is None:
@@ -422,7 +452,7 @@ class BotApplication:
             except ValueError as exc:
                 await reply.text(str(exc))
                 return
-            await self._card(reply, card)
+            await self._card(reply, card, plain_text=bool(result.error) or not result.items)
             return
         if command.kind == CommandKind.OVERVIEW:
             if not group.servers:
@@ -451,29 +481,34 @@ class BotApplication:
             if not servers:
                 await reply.text("本群未配置任何服务器。")
                 return
-            await self._card(
-                reply,
-                Card(
-                    title=f"服务器列表 · {command.page}/{pages}",
-                    sections=tuple(
-                        CardSection(server.name, (f"connect {server.address}",))
-                        for server in servers
+            use_buttons = self.settings.reply_format == "markdown" and self.settings.connect_buttons
+            for offset in range(0, len(servers), MAX_LINK_BUTTONS):
+                batch = servers[offset : offset + MAX_LINK_BUTTONS]
+                lines = ["服务器列表"]
+                links = []
+                fallback = []
+                for server in batch:
+                    url = connect_url(server, config.connect_base_url)
+                    command_line = f"[{server.name}] connect {server.address}"
+                    if use_buttons and url:
+                        links.append(CardLink(clean_text(server.name, 10) or "服务器", url))
+                        fallback.append(command_line)
+                    else:
+                        lines.append(command_line)
+                await self._card(
+                    reply,
+                    Card(
+                        title="服务器列表",
+                        sections=tuple(
+                            CardSection(server.name, (f"connect {server.address}",))
+                            for server in batch
+                        ),
+                        footer="",
+                        links=tuple(links),
+                        content="\n".join(lines),
                     ),
-                    footer=f"发送“服务器列表 {command.page + 1}”查看下一页"
-                    if command.page < pages
-                    else "在游戏控制台输入 connect 指令连接",
-                    content="=== 服务器列表 ===\n"
-                    + ("点击下方链接连接服务器：\n" if config.connect_base_url else "")
-                    + "\n".join(
-                        f"[{server.name}] "
-                        + (
-                            connect_url(server, config.connect_base_url)
-                            or f"connect {server.address}"
-                        )
-                        for server in servers
-                    ),
-                ),
-            )
+                    fallback_text="\n".join(fallback),
+                )
             if self.settings.reply_format == "markdown":
                 return
             lines = []
@@ -511,10 +546,15 @@ class BotApplication:
                 status,
                 safe_mode=config.safe_mode,
                 temporary=command.kind == CommandKind.CONNECT,
-                connection_url=connect_url(target, config.connect_base_url),
+                connection_url=(
+                    None
+                    if self.settings.reply_format == "markdown" and self.settings.connect_buttons
+                    else connect_url(target, config.connect_base_url)
+                ),
             ),
             server=target,
             config=config,
+            plain_text=not status.online,
         )
         if self.settings.reply_format == "markdown":
             return

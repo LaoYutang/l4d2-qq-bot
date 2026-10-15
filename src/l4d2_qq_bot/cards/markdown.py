@@ -11,18 +11,87 @@ def escape_text(value: str, limit: int = 200) -> str:
     value = html.escape(clean_text(value, limit), quote=False)
     # QQ treats \( ... \) and \[ ... \] as math delimiters. Bare parentheses
     # are ordinary prose; entities keep square brackets literal without creating links.
-    value = re.sub(r"([\\`*_{}#+!|>~-])", r"\\\1", value)
+    value = re.sub(r"([\\`*_{}#+!|>~])", r"\\\1", value)
+    # Escape list/separator markers without splitting hyphens inside URL hostnames.
+    value = re.sub(r"^-", r"\\-", value)
     return value.replace("[", "&#91;").replace("]", "&#93;")
+
+
+def markdown_text(content: str) -> str:
+    """Style the existing reply body without adding titles, labels or footer text."""
+    blocks: list[str] = []
+    first = True
+    lines = content.splitlines()
+    is_overview = "L4D2 服务器概览" in lines[:2]
+    is_server = not is_overview and any(line.startswith("服务器: ") for line in lines[:2])
+    for line in lines:
+        padding = line[: len(line) - len(line.lstrip())]
+        text = escape_text(line.lstrip(), len(line))
+        if not text:
+            blocks.append("")
+            continue
+        short = len(text.encode("utf-8")) <= 1000
+        is_quote = not padding and (
+            (is_overview and line.startswith(("服务器: ", "人数: ")))
+            or (is_server and line.startswith(("地图: ", "人数: ", "延迟: ")))
+        )
+        if is_quote:
+            if blocks and blocks[-1].startswith("> "):
+                blocks[-1] += f"\n> {text}"
+            else:
+                blocks.append(f"> {text}")
+        elif not padding and short and line.startswith("["):
+            blocks.append(f"**{text}**")
+        elif first and short:
+            blocks.append(f"# {text}")
+        elif not padding and short and text.endswith((":", "：")):
+            blocks.append(f"## {text}")
+        elif not padding and short and re.match(r"^.{1,12}[:：] ", line):
+            blocks.append(f"**{text}**")
+        else:
+            # Escape numbered prompts so Markdown cannot renumber file/server choices.
+            text = re.sub(r"^(\d+)\.(?=\s)", r"\1\\.", text)
+            # Plain-text alignment spaces would create an indented code block in QQ.
+            blocks.append(text)
+        first = False
+    return "\n\n".join(blocks)
+
+
+def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[str, str]]:
+    """Paginate source text before formatting so escapes and styles stay complete.
+
+    Each page keeps its original text for an explicitly rejected Markdown reply.
+    """
+    pages: list[tuple[str, str]] = []
+    start = 0
+    while start < len(content):
+        lower, upper = 0, min(len(content) - start, max_bytes)
+        while lower < upper:
+            middle = (lower + upper + 1) // 2
+            formatted = markdown_text(content[start : start + middle])
+            if len(formatted.encode("utf-8")) <= max_bytes:
+                lower = middle
+            else:
+                upper = middle - 1
+        if not lower:
+            raise ValueError("Markdown 单页字节预算不足")
+        end = start + lower
+        if end < len(content):
+            boundary = content.rfind("\n", start, end)
+            if boundary >= start + lower // 2:
+                end = boundary + 1
+        plain = content[start:end]
+        formatted = markdown_text(plain)
+        if formatted.strip():
+            pages.append((formatted, plain))
+        start = end
+    return pages
 
 
 def markdown_card(card: Card, *, connection_command: str = "", max_bytes: int = 3200) -> str:
     """Bound one message and reserve space for the connection command and footer."""
     if card.content:
-        lines = []
-        for line in card.content.splitlines():
-            padding = line[: len(line) - len(line.lstrip())]
-            lines.append(padding + escape_text(line.lstrip(), 2400))
-        content = "\n".join(lines)
+        content = markdown_text(card.content)
         if len(content.encode("utf-8")) > max_bytes:
             content = (
                 content.encode("utf-8")[: max_bytes - 3].decode("utf-8", errors="ignore") + "…"
