@@ -35,7 +35,15 @@ async def test_group_id_is_the_only_bootstrap_command_and_duplicates_are_ignored
             1,
             {"msg_type": 0, "content": "DEMO_GROUP_OPENID"},
         )
-        for content in ("帮助", "查询1服", "设置1服 status", "获取用户ID", "晚上好"):
+        for content in (
+            "帮助",
+            "查询1服",
+            "查询1服语音",
+            "1服语音",
+            "设置1服 status",
+            "获取用户ID",
+            "晚上好",
+        ):
             event["d"].update(content=content, id=content)
             assert app.offer_event(event)
         assert app.queue.empty()
