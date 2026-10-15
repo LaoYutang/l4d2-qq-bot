@@ -1,0 +1,24 @@
+services:
+  bot:
+    image: ${L4D2_IMAGE:-l4d2-qq-bot:local}
+    build: .
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      L4D2_CONFIG_PATH: /app/config.json
+      L4D2_DISCOVERY_PATH: /app/data/qq-discovery.json
+    volumes:
+      - type: bind
+        source: ./config.json
+        target: /app/config.json
+        read_only: true
+      - bot-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    command: ["run", "--config", "/app/config.json"]
+
+volumes:
+  bot-data:
