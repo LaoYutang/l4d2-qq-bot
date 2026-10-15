@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "l4d2-qq-bot"
 version = "0.1.0"
-description = "Independent QQ official bot for L4D2 server queries and image cards"
+description = "Independent QQ official bot with real L4D2 queries and native interactive cards"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 license = "AGPL-3.0-only"

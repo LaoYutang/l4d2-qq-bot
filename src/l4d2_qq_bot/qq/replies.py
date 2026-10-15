@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from ..domain import CardLink
 from .client import QQAPIError, QQClient
 from .protocol import GroupMessage
 
@@ -41,7 +42,7 @@ def connection_keyboard(label: str, url: str, *, command: str = "") -> dict[str,
         "type": 0 if url else 2,
         "data": url or command,
         "permission": {"type": 2},
-        "unsupport_tips": "请使用卡片内的连接指令。",
+        "unsupport_tips": "当前客户端不支持此按钮，请更新 QQ 后重试。",
     }
     if not url:
         action["enter"] = False
@@ -64,6 +65,15 @@ def connection_keyboard(label: str, url: str, *, command: str = "") -> dict[str,
             ],
         }
     }
+
+
+def link_keyboard(links: tuple[CardLink, ...]) -> dict[str, Any]:
+    buttons = []
+    for index, link in enumerate(links[:5]):
+        button = connection_keyboard(link.label, link.url)["content"]["rows"][0]["buttons"][0]
+        button["id"] = f"link_{index}"
+        buttons.append(button)
+    return {"content": {"rows": [{"buttons": buttons}]}}
 
 
 class ReplySession:
@@ -95,13 +105,17 @@ class ReplySession:
         media = await self.client.upload_png(self.message.group_openid, png)
         await self.send({"msg_type": 7, "media": {"file_info": media.file_info}})
 
-    async def markdown(self, content: str, *, keyboard: dict[str, Any] | None = None) -> None:
+    async def markdown(
+        self, content: str, *, keyboard: dict[str, Any] | None = None, fallback_text: str = ""
+    ) -> None:
         if not self._markdown_available:
-            await self.text(content)
+            await self.text(content + (f"\n\n{fallback_text}" if fallback_text else ""))
             return
         payload: dict[str, Any] = {"msg_type": 2, "markdown": {"content": content}}
         if keyboard is not None and self._keyboard_available:
             payload["keyboard"] = keyboard
+        elif fallback_text:
+            payload["markdown"]["content"] += f"\n\n{fallback_text}"
         try:
             await self.send(payload)
             logger.info(
@@ -122,13 +136,20 @@ class ReplySession:
                 )
                 logger.warning("%s（HTTP %s，业务码 %s）", reason, exc.status, exc.code)
                 # Only replace a confirmed rejection. Keep the original passive msg_id.
-                await self.markdown(content + f"\n\n> {reason}。")
+                replacement = content + f"\n\n> {reason}。"
+                if fallback_text:
+                    replacement += f"\n\n{fallback_text}"
+                await self.markdown(replacement)
                 return
             if code not in MARKDOWN_REJECTIONS and exc.status != 403:
                 raise
             self._markdown_available = False
             logger.warning("原生 Markdown 被平台拒绝（HTTP %s，业务码 %s）", exc.status, exc.code)
-        await self.text("原生卡片被平台拒绝，请检查应用 Markdown 权限。\n\n" + content)
+        await self.text(
+            "原生卡片被平台拒绝，请检查应用 Markdown 权限。\n\n"
+            + content
+            + (f"\n\n{fallback_text}" if fallback_text else "")
+        )
 
     async def connection(self, label: str, text: str, url: str, *, buttons: bool) -> None:
         if buttons and url:

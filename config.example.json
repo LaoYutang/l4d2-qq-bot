@@ -7,6 +7,12 @@
     "concurrency": 4,
     "allow_private_connect": false
   },
+  "integrations": {
+    "timeout_seconds": 5.0,
+    "concurrency": 4,
+    "workshop_api_url": "",
+    "workshop_max_items": 20
+  },
   "groups": [
     {
       "group_openid": "REPLACE_WITH_GROUP_OPENID",
@@ -15,8 +21,8 @@
       "hh_room_id": "",
       "servers": [
         {
-          "name": "合作服",
-          "aliases": ["1服", "主服"],
+          "name": "1服",
+          "aliases": ["合作服", "主服"],
           "address": "127.0.0.1:27015",
           "connect_url": "",
           "hh_channel_id": "",
@@ -25,8 +31,8 @@
           "panel_token_env": ""
         },
         {
-          "name": "对抗服",
-          "aliases": ["2服"],
+          "name": "2服",
+          "aliases": ["对抗服"],
           "address": "127.0.0.1:27016"
         }
       ]

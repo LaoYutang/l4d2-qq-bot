@@ -19,7 +19,7 @@ flowchart LR
     Media --> Reply
 ```
 
-已实现 QQ Token / REST、WS 读取与心跳重连、群隔离、有界 worker 队列、去重、A2S、原生 Markdown 与可选 PNG 被动回复。`qq/protocol.py` 是状态模型，`qq/gateway.py` 负责实际 socket，`qq/client.py` 负责真实 HTTP。用户已在真实群确认原生卡片和底部按钮显示，测试数据仍为模拟；外部扩展 API 仍待迁移。
+已实现 QQ Token / REST、WS 读取与心跳重连、群隔离、有界 worker 队列、去重、真实 A2S、地图名称、黑盒语音、Steam 工坊、原生 Markdown 与可选 PNG 被动回复。用户已在真实群确认服务器真名和实时数据正常。run 不再提供模拟数据参数；fixture 仅供本地 demo / preview 与测试。RCON / 面板管理仍待实现。
 
 ## 模块边界
 
@@ -31,6 +31,7 @@ src/l4d2_qq_bot/
   commands.py            # 纯解析，群内名称匹配
   demo.py                # 明确标记的模拟事件验收
   services/query.py      # 地址解析、超时、A2S
+  services/queries.py    # A2S 与地图 / 语音查询编排
   cards/views.py         # 结果转卡片，不访问网络
   cards/markdown.py      # 原生正文、文本转义、长度限制
   cards/renderer.py      # PNG 渲染、字体、截断
@@ -40,12 +41,16 @@ src/l4d2_qq_bot/
   qq/replies.py          # msg_id / msg_seq、回复预算、按钮
   qq/discovery.py        # 私人 OpenID 发现记录
   runtime.py             # HTTP / WS / worker 生命周期
-  integrations/          # API 客户端的后续迁移边界
+  integrations/http.py   # 独立外部会话、响应上限、超时、并发
+  integrations/cache.py  # TTL / LRU、合并并发请求、显式关闭
+  integrations/maps.py   # 地图代码转真名
+  integrations/heybox.py # 黑盒真实人数、名单与昵称缓存
+  integrations/workshop.py # Steam 官方与原项目兼容解析 API
 tests/                   # 离线测试
 examples/                # 模拟群事件与配置说明
 ```
 
-`app.py` 编排事件、命令、服务与回复；网关用非阻塞入队，队列满时保留上一序号并重连补发；业务处理与心跳分离。绘图在有锁的工作线程中执行。去重缓存最多 4096 项 / 10 分钟，队列默认 100 项、2 个 worker。`integrations` 中后续实现各独立 API。不要让 Pillow、QQ payload 或 AstrBot 类型进入 A2S 业务模型。
+`app.py` 编排事件、命令、服务与回复；网关用非阻塞入队，队列满时保留上一序号并重连补发；业务处理与心跳分离。绘图在有锁的工作线程中执行。去重缓存最多 4096 项 / 10 分钟，队列默认 100 项、2 个 worker。原生模式不初始化 Pillow 字体。不要让 Pillow、QQ payload 或 AstrBot 类型进入 A2S 业务模型。
 
 ## QQ 官方协议
 
@@ -64,7 +69,7 @@ examples/                # 模拟群事件与配置说明
 
 按钮目标优先取 `servers[].connect_url`，其次按 `connect_base_url + '/' + address` 生成。例如基础地址 `https://steam-connect.laoyutang.cn` 和服务器 `106.54.214.111:37015` 组成完整连接页 URL。目标与本次查询结果一起构造，多人并发不共享“当前服务器”。无 URL 时提供 `action.type=2` 的填入指令按钮，enter=false，明确标注用途。每个按钮文字最多 10 字符。
 
-原生 Markdown 复用视图层脱敏，额外转义 Markdown / HTML 标记，正文限制 3200 UTF-8 字节并为连接指令与页脚保留空间。明确的按钮权限 / URL 拒绝会去掉键盘再发送原生正文并说明原因；明确的 Markdown 权限拒绝再回退文字。保留同一被动回复 msg_id，使用新的 msg_seq；超时或结果不确定时不重发。PNG 模式仍可选，不能把画在图片上的按钮声称为原生按钮。
+原生 Markdown 复用视图层脱敏，正文限制 3200 UTF-8 字节。圆括号直接保留，避免 `\(...\)` 被 QQ 解释成公式；方括号用字符实体，避免生成公式或注入链接。单服标题来自真实 server_name，配置 name 仅为快捷名。单服卡片不显示“已脱敏”、connect 指令与查询时间，正常情况下仅挂载“进入服务器”按钮。明确的按钮权限 / URL 拒绝会说明原因并补回连接指令；明确的 Markdown 权限拒绝再回退文字。始终保留被动 msg_id，使用新 msg_seq；超时或结果不确定时不重发。
 
 官方 SDK 旧公告表示 WS 曾计划下线，但现行文档仍提供 WS 接入。两者并存意味着必须核实具体应用的实际权限；不能仅凭文档断言“所有新机器人都能用 WS”，也不能忽略用户要求改走其他链路。
 
@@ -74,11 +79,15 @@ examples/                # 模拟群事件与配置说明
 
 本地 `query` 在 DNS 解析后检查目标地址并使用解析出的 IP 发 UDP，请求全程有超时；未经显式允许不访问本机 / 私网。群机器人允许配置中可信地址走私网，临时查询继续遵守公网限制。
 
-地图 API 失败返回地图代码。黑盒凭据通过请求级 headers 提供，不能污染 QQ 共用会话的默认头。工坊服务可替换且响应有数量上限。RCON 和面板的有副作用请求不做盲目重试。
+地图查询保留上游 GET `map_name_url/map_code` 纯文本协议，成功结果缓存 1 小时，并发同图合并。失败返回 A2S 实际地图代码，不生成猜测名称。
+
+外部 API 与 QQ 使用独立 ClientSession，外部请求并发默认 4、单次超时 5 秒、响应最多 1 MiB，拒绝重定向且不记录响应体。黑盒 Token 只通过请求级 token header 提供。人数使用每次频道查询的真实 user_ids；字段缺失是失败，不视作零人。房间昵称分页每页 100、最多 20 页，缓存 10 分钟；名单失败仍保留真实人数。语音失败不改变 A2S 的在线状态。
+
+工坊默认请求 Steam GetPublishedFileDetails 和 GetCollectionDetails。真实详情响应可能给合集返回 file_url 且缺少类型字段，因此使用合集接口确认类型，不能根据 file_url 判断单品。合集默认最多取前 20 项，每页一项；私有 / 删除条目保留不可访问状态，空下载地址保留元信息。自定义 workshop_api_url 时兼容原项目 `POST [ID]` JSON 协议。工坊和下载链接只展示，不下载 / 安装文件。RCON 与面板操作未实现。
 
 ## 依据
 
-- [参考项目](https://github.com/LaoYutang/l4d2-with-astrbot)（核对 main.py 与 README；本次未复制业务源码）
+- [参考项目](https://github.com/LaoYutang/l4d2-with-astrbot)（核对版本及 API 改写来源见 [NOTICE](../NOTICE.md)）
 - [访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
 - [事件与 WebSocket](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html)
 - [群事件字段](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)
@@ -88,3 +97,4 @@ examples/                # 模拟群事件与配置说明
 - [原生 Markdown 格式与 2026 能力开放说明](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
 - [2026 API 域名变更](https://bot.q.qq.com/wiki/develop/api-v2/changelog.html)
 - [官方 SDK 旧 WS 公告](https://github.com/tencent-connect/botgo#注意事项)
+- [Steam 官方工坊详情与合集接口](https://partner.steamgames.com/doc/webapi/ISteamRemoteStorage)

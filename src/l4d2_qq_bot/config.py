@@ -36,7 +36,9 @@ def base_url(value: str) -> str:
 
 
 class ServerConfig(ConfigModel):
-    name: str = Field(min_length=1, max_length=80)
+    name: str = Field(
+        min_length=1, max_length=80, description="查询快捷名；显示名称由真实服务器返回"
+    )
     address: str
     aliases: list[str] = Field(default_factory=list, max_length=20)
     connect_url: str = Field(default="", max_length=2048)
@@ -112,11 +114,24 @@ class QueryConfig(ConfigModel):
     allow_private_connect: bool = False
 
 
+class IntegrationConfig(ConfigModel):
+    timeout_seconds: float = Field(default=5.0, ge=0.1, le=30)
+    concurrency: int = Field(default=4, ge=1, le=16)
+    workshop_api_url: str = ""
+    workshop_max_items: int = Field(default=20, ge=1, le=100)
+
+    @field_validator("workshop_api_url")
+    @classmethod
+    def valid_api_url(cls, value: str) -> str:
+        return base_url(value)
+
+
 class AppConfig(ConfigModel):
     safe_mode: bool = True
     connect_base_url: str = ""
     map_name_url: str = ""
     query: QueryConfig = Field(default_factory=QueryConfig)
+    integrations: IntegrationConfig = Field(default_factory=IntegrationConfig)
     groups: list[GroupConfig] = Field(default_factory=list, max_length=100)
 
     @field_validator("connect_base_url", "map_name_url")
