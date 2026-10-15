@@ -1,0 +1,15 @@
+{
+  "id": "DEMO_EVENT_ID",
+  "op": 0,
+  "s": 42,
+  "t": "GROUP_AT_MESSAGE_CREATE",
+  "d": {
+    "id": "DEMO_MESSAGE_ID",
+    "group_openid": "DEMO_GROUP_OPENID",
+    "author": {
+      "member_openid": "DEMO_MEMBER_OPENID",
+      "bot": false
+    },
+    "content": " /查询 1 服 "
+  }
+}
