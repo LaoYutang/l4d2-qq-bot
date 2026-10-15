@@ -17,13 +17,15 @@ def escape_text(value: str, limit: int = 200) -> str:
     return value.replace("[", "&#91;").replace("]", "&#93;")
 
 
-def markdown_text(content: str, *, player_list_continuation: bool = False) -> str:
+def markdown_text(
+    content: str, *, player_list_continuation: bool = False, overview_continuation: bool = False
+) -> str:
     """Style the existing reply body without adding titles, labels or footer text."""
     blocks: list[str] = []
     first = True
     in_player_list = player_list_continuation
     lines = content.splitlines()
-    is_overview = "L4D2 服务器概览" in lines[:2]
+    is_overview = overview_continuation or "L4D2 服务器概览" in lines[:2]
     is_server = not is_overview and any(line.startswith("地图: ") for line in lines[:4])
     for line in lines:
         padding = line[: len(line) - len(line.lstrip())]
@@ -41,7 +43,7 @@ def markdown_text(content: str, *, player_list_continuation: bool = False) -> st
             (is_overview and line.startswith(("服务器: ", "人数: ")))
             or (is_server and line.startswith(("地图: ", "人数: ", "延迟: ")))
         )
-        if is_player:
+        if is_player or (is_overview and padding):
             item = f"- {text}"
             if blocks and blocks[-1].startswith("- "):
                 blocks[-1] += f"\n{item}"
@@ -77,13 +79,17 @@ def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[st
     pages: list[tuple[str, str]] = []
     start = 0
     player_list_start = content.find("\n在线玩家:\n")
+    is_overview = "L4D2 服务器概览" in content.splitlines()[:2]
     while start < len(content):
         player_list_continuation = 0 <= player_list_start < start
+        overview_continuation = is_overview and start > 0
         lower, upper = 0, min(len(content) - start, max_bytes)
         while lower < upper:
             middle = (lower + upper + 1) // 2
             formatted = markdown_text(
-                content[start : start + middle], player_list_continuation=player_list_continuation
+                content[start : start + middle],
+                player_list_continuation=player_list_continuation,
+                overview_continuation=overview_continuation,
             )
             if len(formatted.encode("utf-8")) <= max_bytes:
                 lower = middle
@@ -97,7 +103,11 @@ def markdown_text_pages(content: str, *, max_bytes: int = 3200) -> list[tuple[st
             if boundary >= start + lower // 2:
                 end = boundary + 1
         plain = content[start:end]
-        formatted = markdown_text(plain, player_list_continuation=player_list_continuation)
+        formatted = markdown_text(
+            plain,
+            player_list_continuation=player_list_continuation,
+            overview_continuation=overview_continuation,
+        )
         if formatted.strip():
             pages.append((formatted, plain))
         start = end

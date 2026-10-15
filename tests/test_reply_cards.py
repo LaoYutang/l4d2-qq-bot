@@ -51,6 +51,43 @@ def test_native_layout_keeps_the_existing_visible_body(card):
     assert "查询快捷名" not in content and "查询时间" not in content and "已脱敏" not in content
 
 
+def test_overview_player_count_and_map_are_compact_list_items():
+    online = replace(
+        sample_statuses()[0],
+        alias="1服",
+        server_name="真实服务器(测试)",
+        map_name="[地图]* | 旅馆",
+        voice_count=2,
+    )
+    content = markdown_card(overview_card([online, sample_statuses()[1]]))
+    assert content.startswith("# L4D2 服务器概览\n\n> 服务器: 1/2 在线\n> 人数: 3/8")
+    assert ("**&#91;1服&#93; 真实服务器(测试)**\n\n- 3/8   🎧2\n- &#91;地图&#93;\\*") in content
+    assert "**&#91;对抗服&#93; 离线或无法连接**" in content
+    assert sum(line.startswith("- ") for line in content.splitlines()) == 2
+
+
+def test_overview_details_keep_list_format_and_order_across_pages():
+    statuses = [
+        replace(
+            sample_statuses()[0],
+            alias=f"{index}服",
+            server_name=f"真实服务器{index}(测试)",
+            map_name="很长的地图名称" * 10,
+        )
+        for index in range(1, 33)
+    ]
+    card = overview_card(statuses)
+    pages = markdown_text_pages(card.content)
+    assert 1 < len(pages) <= 5
+    assert "".join(plain for _, plain in pages) == card.content
+    assert sum(line.startswith("- ") for content, _ in pages for line in content.splitlines()) == 64
+    assert all(not content.startswith("# ") for content, _ in pages[1:])
+    assert all(len(content.encode("utf-8")) <= 3200 for content, _ in pages)
+    assert [line for content, _ in pages for line in visible_lines(content)] == [
+        line.strip() for line in card.content.splitlines() if line.strip()
+    ]
+
+
 @pytest.mark.parametrize(
     "command, expected, msg_type",
     [
