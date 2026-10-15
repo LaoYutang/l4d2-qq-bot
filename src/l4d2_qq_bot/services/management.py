@@ -158,9 +158,7 @@ class ManagementService:
             await reply.text(f"服务器 {server.name} 未配置 RCON 密码，无法执行{action}。")
             return
         if command.kind == CommandKind.RCON:
-            await self._execute_rcon(
-                server, text, message, reply, timeout_seconds=timeout_seconds
-            )
+            await self._execute_rcon(server, text, message, reply, timeout_seconds=timeout_seconds)
             return
         prompt = f"确认重启 {clean_text(server.name)}？"
         await reply.text(prompt + "（回复“确认”执行，输入其他内容取消，30 秒内有效）")

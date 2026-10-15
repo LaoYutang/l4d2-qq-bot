@@ -281,9 +281,7 @@ class BotApplication:
                 buttons = game_keyboard["content"]["rows"][0]["buttons"]
                 if keyboard:
                     buttons.extend(
-                        button
-                        for row in keyboard["content"]["rows"]
-                        for button in row["buttons"]
+                        button for row in keyboard["content"]["rows"] for button in row["buttons"]
                     )
                 if len(buttons) > MAX_LINK_BUTTONS:
                     raise ValueError(f"单条卡片最多支持 {MAX_LINK_BUTTONS} 个按钮")
