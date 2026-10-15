@@ -22,7 +22,7 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 - `services/queries.py`：单服、总览、临时地址和 CLI 共用地图 / 语音编排。
 - `integrations/`：地图、黑盒、工坊、面板与 Source RCON。
 - `services/management.py`：管理员权限、确认与闪传会话、去重后的操作及审计。
-- `cards/`：领域结果转原版正文；Markdown / PNG 均使用相同正文和脱敏。
+- `cards/`：领域结果转原版正文；Markdown / PNG 均使用相同正文和脱敏。原生排版只修饰现有正文，保留标题、字段、分区和原有文字；在转义前按渲染字节预算分页，避免截断转义符或样式。
 - `qq/`：Token、OpenAPI、WS 状态机、被动回复序号、平台拒绝回退。
 - `runtime.py`：QQ 与外部 HTTP 会话、配置页、worker、网关及关闭流程。
 
@@ -34,9 +34,9 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 
 Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / clientSecret；REST 使用 `Authorization: QQBot {access_token}`，`GET /gateway` 获取网关。保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session、退避重连。
 
-默认消息为同一次 `POST /v2/groups/{group_openid}/messages` 的 `msg_type=2`，包含 `markdown.content` 和 `keyboard.content`。动态连接按钮取每服 connect_url 或 connect_base_url/address，不依赖共享“当前服务器”。
+查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。动态连接按钮取每服 connect_url 或 connect_base_url/address，不依赖共享“当前服务器”。
 
-PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送。原消息 ID 为 d.id，每次发送递增 msg_seq，最多 5 次；长文字按 UTF-8 字节分页。平台明确拒绝按钮或 Markdown 才降级，网络结果不确定时不盲目重发。
+PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送，补充文字使用普通文本。原消息 ID 为 d.id，每次发送递增 msg_seq，最多 5 次；原生正文按转义和排版后的 UTF-8 字节分页，普通文本直接按 UTF-8 字节分页。平台明确拒绝按钮或 Markdown 才降级，普通文本降级使用保留的原正文并说明原因；降级不再尝试卡片，不重新执行业务。网络结果不确定时不盲目重发。
 
 正文采用上游字段、标点和时长；外部名称清理控制字符并转义 Markdown。圆括号保留，方括号使用实体，不生成 QQ 公式分隔符。去掉产品说明、快捷名说明及统计页脚；保留真实故障提示。详见 [原版对照](parity.md)。
 
@@ -80,5 +80,6 @@ RCON / 重启要求本群 admin_openids、完整精确服务器名 / 别名与�
 - [QQ 访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
 - [QQ 群消息事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)
 - [QQ 群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
+- [QQ Markdown 格式与自定义正文](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
 - [QQ Markdown / 按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)
 - [Steam 工坊接口](https://partner.steamgames.com/doc/webapi/ISteamRemoteStorage)

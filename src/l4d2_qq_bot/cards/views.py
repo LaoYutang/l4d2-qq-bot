@@ -174,10 +174,9 @@ def overview_text(statuses: list[ServerStatus], *, demo: bool = False) -> str:
     lengths = [len(f"{s.player_count}/{s.max_players}") for s in online]
     player_width = max(lengths, default=0)
     lines = [
-        "=== L4D2 服务器概览 ===",
+        "L4D2 服务器概览",
         f"服务器: {len(online)}/{len(statuses)} 在线",
         f"人数: {sum(s.player_count for s in online)}/{sum(s.max_players for s in online)}",
-        "-" * 25,
     ]
     if demo:
         lines.insert(0, "模拟数据")
@@ -195,7 +194,7 @@ def overview_text(statuses: list[ServerStatus], *, demo: bool = False) -> str:
             [
                 f"{prefix} {truncate_width(clean_text(status.server_name), 20)}",
                 f"{padding}{players}{' ' * ((player_width - len(players)) * 2)}{voice}",
-                f"{padding}{truncate_width(name, 15)}",
+                f"{padding}{truncate_width(name, 40)}",
             ]
         )
     return "\n".join(lines)

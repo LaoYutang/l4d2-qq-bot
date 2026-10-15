@@ -99,7 +99,8 @@ async def test_real_udp_and_map_http_produce_one_native_card_with_true_name(
         api.send_group.assert_awaited_once()
         payload = api.send_group.await_args.args[3]
         content = payload["markdown"]["content"]
-        assert content.startswith("服务器: 真正的服务器(测试)")
+        assert payload["msg_type"] == 2
+        assert content.startswith("# 服务器: 真正的服务器(测试)")
         assert "死亡中心：旅馆" in content and "人数: 2/8" in content
         assert "真实玩家" not in content and r"真\*\*家" in content
         assert "模拟" not in content and "已脱敏" not in content

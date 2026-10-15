@@ -81,7 +81,9 @@ def test_server_title_preserves_parentheses_without_qq_math_delimiters():
     status = replace(sample_statuses()[0], server_name="真实服务器(中文说明)")
     card = server_card(status)
     content = markdown_card(card)
-    assert content.startswith("服务器: 真实服务器(中文说明)")
+    assert content.startswith("# 服务器: 真实服务器(中文说明)")
+    assert "## 在线玩家:" in content
+    assert "> 人数: 3/8" in content
     assert r"\(" not in content and r"\)" not in content
     assert "已脱敏" not in content and "查询时间" not in content
     assert "connect " not in content

@@ -71,6 +71,7 @@ async def test_invalid_command_without_mention_gets_passive_usage_help(tmp_path)
         client.send_group.assert_awaited_once()
         call = client.send_group.await_args
         assert call.args[:3] == ("DEMO_GROUP_OPENID", "invalid-query", 1)
+        assert call.args[3]["msg_type"] == 0
         assert "请输入服务器名称" in call.args[3]["content"]
     finally:
         await app.close()
