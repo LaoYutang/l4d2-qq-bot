@@ -148,7 +148,7 @@ async def test_address_list_uses_buttons_or_copyable_commands(base_url, buttons,
         await app.close()
 
 
-@pytest.mark.parametrize("count", [6, 26])
+@pytest.mark.parametrize("count", [1, 5, 6, 10, 11, 26, 32])
 async def test_address_list_keeps_all_button_targets_within_platform_limits(count):
     client = AsyncMock()
     config = sample_config()
@@ -162,7 +162,7 @@ async def test_address_list_keeps_all_button_targets_within_platform_limits(coun
     try:
         await app.handle_message(message, ReplySession(client, message))
         calls = client.send_group.await_args_list
-        assert 1 <= len(calls) <= 5
+        assert len(calls) == (count + 9) // 10
         assert [call.args[2] for call in calls] == list(range(1, len(calls) + 1))
         targets = []
         labels = []
@@ -171,7 +171,7 @@ async def test_address_list_keeps_all_button_targets_within_platform_limits(coun
             assert call.args[3]["markdown"]["content"] == "# 服务器列表"
             rows = call.args[3]["keyboard"]["content"]["rows"]
             assert 1 <= len(rows) <= 5
-            assert all(1 <= len(row["buttons"]) <= 5 for row in rows)
+            assert all(1 <= len(row["buttons"]) <= 2 for row in rows)
             targets.extend(button["action"]["data"] for row in rows for button in row["buttons"])
             labels.extend(
                 button["render_data"]["label"] for row in rows for button in row["buttons"]

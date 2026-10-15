@@ -36,6 +36,8 @@ Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / 
 
 查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。游戏连接按钮统一由 connect_base_url/address 生成，不支持单服 URL 覆盖，不依赖共享“当前服务器”。
 
+连接按钮每行最多 2 个，每张卡片最多 5 行、10 个。服务器列表超过 10 台时按配置顺序分卡片发送；指定页码仍每页 6 台。
+
 ServerConfig 的可选 voice_connect_url 保存该服语音邀请链接，仅接受不含账号密码、空白或控制字符的 HTTP(S) URL，保留查询参数与片段，最多 512 字节。单服视图将其转换为 CardLink“进入语音”，应用层合并游戏连接按钮与语音链接按钮，在同一张卡片底部发送，按钮使用不同 ID。地址匹配到本群配置的 connect 查询沿用该服链接；未配置目标不使用其他服务器的链接。关闭按钮或平台明确拒绝时以链接文字补充；PNG 与离线普通文本也保留该入口。
 
 PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送，补充文字使用普通文本。原消息 ID 为 d.id，每次发送递增 msg_seq，最多 5 次；原生正文按转义和排版后的 UTF-8 字节分页，普通文本直接按 UTF-8 字节分页。平台明确拒绝按钮或 Markdown 才降级，普通文本降级使用保留的原正文并说明原因；降级不再尝试卡片，不重新执行业务。网络结果不确定时不盲目重发。

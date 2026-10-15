@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 MARKDOWN_REJECTIONS = {"304036", "40034127", "50056"}
 KEYBOARD_REJECTIONS = {"304057"}
 URL_REJECTIONS = {"304003", "40054010"}
-MAX_LINK_BUTTONS = 25
+BUTTONS_PER_ROW = 2
+MAX_LINK_BUTTONS = 5 * BUTTONS_PER_ROW
 
 
 def split_text(text: str, max_bytes: int = 3500) -> list[str]:
@@ -76,7 +77,10 @@ def link_keyboard(links: tuple[CardLink, ...]) -> dict[str, Any]:
         button = connection_keyboard(link.label, link.url)["content"]["rows"][0]["buttons"][0]
         button["id"] = f"link_{index}"
         buttons.append(button)
-    rows = [{"buttons": buttons[index : index + 5]} for index in range(0, len(buttons), 5)]
+    rows = [
+        {"buttons": buttons[index : index + BUTTONS_PER_ROW]}
+        for index in range(0, len(buttons), BUTTONS_PER_ROW)
+    ]
     return {"content": {"rows": rows}}
 
 
