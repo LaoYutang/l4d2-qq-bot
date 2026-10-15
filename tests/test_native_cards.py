@@ -81,10 +81,12 @@ async def test_simultaneous_queries_keep_button_targets_in_the_same_single_messa
         buttons = payload["keyboard"]["content"]["rows"][0]["buttons"]
         assert len(buttons) == (2 if with_voice else 1)
         button = buttons[0]
-        assert button["render_data"]["label"] == "进入服务器"
+        assert button["render_data"]["label"] == "🎮 进入服务器"
+        assert button["render_data"]["visited_label"] == "🎮 进入服务器"
         assert button["action"]["data"] == f"https://steam-connect.example.test/{address}"
         if with_voice:
-            assert buttons[1]["render_data"]["label"] == "进入语音"
+            assert buttons[1]["render_data"]["label"] == "🎧 进入语音"
+            assert buttons[1]["render_data"]["visited_label"] == "🎧 进入语音"
             assert buttons[1]["action"]["data"] == f"https://voice.example.test/invite/{index}"
             assert buttons[1]["action"]["type"] == 0
             assert buttons[0]["id"] != buttons[1]["id"]
@@ -131,11 +133,11 @@ async def test_voice_link_survives_missing_game_url_and_button_fallback(
         payload = calls[-1].args[3]
         if buttons_enabled and not rejected:
             buttons = payload["keyboard"]["content"]["rows"][0]["buttons"]
-            assert buttons[0]["render_data"]["label"] == "连接指令"
+            assert buttons[0]["render_data"]["label"] == "🎮 连接指令"
             assert buttons[0]["action"]["data"] == "connect 203.0.113.10:27015"
             assert buttons[0]["action"]["type"] == 2
             assert buttons[0]["action"]["enter"] is False
-            assert buttons[1]["render_data"]["label"] == "进入语音"
+            assert buttons[1]["render_data"]["label"] == "🎧 进入语音"
             assert buttons[1]["action"]["data"] == url
         else:
             assert "keyboard" not in payload
@@ -152,7 +154,8 @@ def test_server_title_preserves_parentheses_without_qq_math_delimiters():
     status = replace(sample_statuses()[0], server_name="真实服务器(中文说明)")
     card = server_card(status)
     content = markdown_card(card)
-    assert content.startswith("# 服务器: 真实服务器(中文说明)")
+    assert card.title == "真实服务器(中文说明)"
+    assert content.startswith("# 真实服务器(中文说明)")
     assert "## 在线玩家:" in content
     assert "> 人数: 3/8" in content
     assert r"\(" not in content and r"\)" not in content

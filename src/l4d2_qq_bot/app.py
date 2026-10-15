@@ -273,7 +273,7 @@ class BotApplication:
             )
             if server and self.settings.connect_buttons:
                 url = connect_url(server, (config or self.config).connect_base_url)
-                label = "进入服务器" if url else "连接指令"
+                label = "🎮 进入服务器" if url else "🎮 连接指令"
                 game_keyboard = connection_keyboard(label, url, command=command)
                 buttons = game_keyboard["content"]["rows"][0]["buttons"]
                 if keyboard:
@@ -569,4 +569,4 @@ class BotApplication:
             return
         url = connect_url(target, config.connect_base_url)
         text = f"点击直连: {url}" if url else f"连接指令: connect {status.address}"
-        await reply.connection("进入服务器", text, url, buttons=self.settings.connect_buttons)
+        await reply.connection("🎮 进入服务器", text, url, buttons=self.settings.connect_buttons)

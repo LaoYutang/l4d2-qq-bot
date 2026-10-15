@@ -42,7 +42,7 @@ def server_card(
     voice_connection_url: str = "",
 ) -> Card:
     label = "模拟数据 · " if demo else ""
-    links = (CardLink("进入语音", voice_connection_url),) if voice_connection_url else ()
+    links = (CardLink("🎧 进入语音", voice_connection_url),) if voice_connection_url else ()
     if not status.online:
         target = clean_text(status.address if temporary else status.alias)
         return Card(
@@ -114,7 +114,7 @@ def server_text(
     connection_url: str | None,
     demo: bool = False,
 ) -> str:
-    lines = [f"服务器: {clean_text(status.server_name)}"]
+    lines = [clean_text(status.server_name) or "服务器未返回名称"]
     if demo:
         lines.insert(0, "模拟数据")
     if temporary:
