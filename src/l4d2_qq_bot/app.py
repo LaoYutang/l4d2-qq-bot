@@ -21,6 +21,7 @@ from .qq.client import QQAPIError, QQClient, QQTransportError
 from .qq.discovery import DiscoveryRecorder
 from .qq.protocol import GroupMessage
 from .qq.replies import (
+    BUTTONS_PER_ROW,
     MAX_LINK_BUTTONS,
     ReplySession,
     connection_keyboard,
@@ -284,8 +285,8 @@ class BotApplication:
                 keyboard = {
                     "content": {
                         "rows": [
-                            {"buttons": buttons[index : index + 5]}
-                            for index in range(0, len(buttons), 5)
+                            {"buttons": buttons[index : index + BUTTONS_PER_ROW]}
+                            for index in range(0, len(buttons), BUTTONS_PER_ROW)
                         ]
                     }
                 }
