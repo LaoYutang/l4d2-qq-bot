@@ -11,14 +11,18 @@ from urllib.parse import quote
 
 from .cards.markdown import markdown_card
 from .cards.renderer import CardRenderer
-from .cards.views import clean_text, overview_card, server_card
+from .cards.views import overview_card, server_card, voice_card, workshop_card
 from .commands import Command, CommandKind, match_server, parse_command
 from .config import AppConfig, GroupConfig, ServerConfig, Settings
-from .domain import Card, CardSection
+from .domain import Card, CardSection, VoiceStatus
+from .integrations.heybox import HeyboxVoiceClient
+from .integrations.maps import MapNameClient
+from .integrations.workshop import WorkshopClient
 from .qq.client import QQAPIError, QQClient, QQTransportError
 from .qq.discovery import DiscoveryRecorder
 from .qq.protocol import GroupMessage
-from .qq.replies import ReplySession, connection_keyboard
+from .qq.replies import ReplySession, connection_keyboard, link_keyboard
+from .services.queries import QueryCoordinator
 from .services.query import QueryService, TargetNotAllowed
 
 logger = logging.getLogger(__name__)
@@ -70,15 +74,21 @@ class BotApplication:
         client: QQClient,
         config: AppConfig,
         settings: Settings,
-        renderer: CardRenderer,
+        renderer: CardRenderer | None,
         discovery: DiscoveryRecorder,
         *,
-        demo_data: bool = False,
+        query_service: QueryService | None = None,
+        maps: MapNameClient | None = None,
+        voice: HeyboxVoiceClient | None = None,
+        workshop: WorkshopClient | None = None,
     ):
         self.client, self.config, self.settings = client, config, settings
         self.renderer, self.discovery = renderer, discovery
-        self.demo_data = demo_data
-        self.query_service = QueryService(config.query.timeout_seconds, config.query.concurrency)
+        self.query_service = query_service or QueryService(
+            config.query.timeout_seconds, config.query.concurrency
+        )
+        self.maps, self.voice, self.workshop = maps, voice, workshop
+        self.queries = QueryCoordinator(self.query_service, maps, voice)
         self.queue: asyncio.Queue[QueuedMessage] = asyncio.Queue(settings.event_queue_size)
         self._seen: OrderedDict[tuple[str, str], float] = OrderedDict()
         self._workers: list[asyncio.Task] = []
@@ -121,6 +131,9 @@ class BotApplication:
             with suppress(asyncio.CancelledError):
                 await worker
         self._workers.clear()
+        for client in (self.maps, self.voice, self.workshop):
+            if client is not None:
+                await client.close()
 
     async def _worker(self) -> None:
         while True:
@@ -153,18 +166,18 @@ class BotApplication:
         self, reply: ReplySession, card: Card, *, server: ServerConfig | None = None
     ) -> None:
         if self.settings.reply_format == "markdown":
-            keyboard = None
+            keyboard = (
+                link_keyboard(card.links) if card.links and self.settings.connect_buttons else None
+            )
             command = f"connect {server.address}" if server else ""
             if server and self.settings.connect_buttons:
                 url = connect_url(server, self.config.connect_base_url)
-                label = (
-                    f"连接{clean_text(server.name, 8)}"
-                    if url
-                    else f"{clean_text(server.name, 6)}连接指令"
-                )
+                label = "进入服务器" if url else "连接指令"
                 keyboard = connection_keyboard(label, url, command=command)
-            await reply.markdown(markdown_card(card, connection_command=command), keyboard=keyboard)
+            await reply.markdown(markdown_card(card), keyboard=keyboard, fallback_text=command)
             return
+        if self.renderer is None:
+            raise ValueError("图片模式需要配置图片渲染器")
         async with self._render_lock:
             png = await asyncio.to_thread(self.renderer.render, card)
         try:
@@ -173,15 +186,13 @@ class BotApplication:
             if reply.sequence == 0:
                 await reply.text("图片上传失败，请检查机器人富媒体接口权限后重试。")
             raise
+        if card.links:
+            await reply.text("\n".join(f"{link.label}：{link.url}" for link in card.links))
 
-    async def _query_server(self, server: ServerConfig, *, players: bool = True):
-        if self.demo_data:
-            from .demo import sample_statuses
-
-            return replace(sample_statuses()[0], alias=server.name, address=server.address)
-        return await self.query_service.query(
-            server.address, alias=server.name, allow_private=True, include_players=players
-        )
+    async def _query_server(
+        self, server: ServerConfig, group: GroupConfig, *, players: bool = True
+    ):
+        return await self.queries.server(server, group, players=players)
 
     async def handle_message(self, message: GroupMessage, reply: ReplySession) -> None:
         group = next(
@@ -201,7 +212,7 @@ class BotApplication:
                 reply,
                 Card(
                     title="L4D2 查询帮助",
-                    subtitle="模拟查询数据" if self.demo_data else "QQ 官方机器人 · 服务器查询",
+                    subtitle="QQ 官方机器人 · 真实服务器查询",
                     sections=(
                         CardSection(
                             "可用指令",
@@ -210,13 +221,38 @@ class BotApplication:
                                 "综合查询",
                                 "服务器列表 / 服务器列表 2",
                                 "connect IP:端口",
+                                "语音1服",
+                                "Steam 工坊链接 / 工坊 ID 页码",
                                 "帮助",
                             ),
                         ),
                     ),
-                    footer="管理、语音与工坊功能仍在后续开发阶段",
+                    footer="管理操作仍在后续开发阶段；外部接口未配置时会明确提示",
                 ),
             )
+            return
+        if command.kind == CommandKind.VOICE:
+            server = match_server(group.servers, command.argument)
+            if server is None:
+                return
+            status = (
+                await self.voice.query(server.name, group.hh_room_id, server.hh_channel_id)
+                if self.voice is not None
+                else VoiceStatus(server.name, False, error="未配置黑盒语音客户端。")
+            )
+            await self._card(reply, voice_card(status, safe_mode=self.config.safe_mode))
+            return
+        if command.kind == CommandKind.WORKSHOP:
+            if self.workshop is None:
+                await reply.text("工坊查询客户端未启用，请检查运行配置。")
+                return
+            result = await self.workshop.query(command.argument)
+            try:
+                card = workshop_card(result, page=command.page)
+            except ValueError as exc:
+                await reply.text(str(exc))
+                return
+            await self._card(reply, card)
             return
         if command.kind == CommandKind.OVERVIEW:
             if not group.servers:
@@ -224,11 +260,11 @@ class BotApplication:
                 return
             statuses = list(
                 await asyncio.gather(
-                    *(self._query_server(server, players=False) for server in group.servers)
+                    *(self._query_server(server, group, players=False) for server in group.servers)
                 )
             )
             for offset in range(0, len(statuses), 8):
-                card = overview_card(statuses[offset : offset + 8], demo=self.demo_data)
+                card = overview_card(statuses[offset : offset + 8])
                 if len(statuses) > 8:
                     card = replace(
                         card,
@@ -274,37 +310,30 @@ class BotApplication:
             server = match_server(group.servers, command.argument)
             if server is None:
                 return
-            status = await self._query_server(server)
+            status = await self._query_server(server, group)
         else:
             server = next(
                 (item for item in group.servers if item.address == command.argument), None
             )
             if server is not None:
-                status = await self._query_server(server)
-            elif self.demo_data:
-                from .demo import sample_statuses
-
-                status = replace(
-                    sample_statuses()[0], alias=command.argument, address=command.argument
-                )
+                status = await self._query_server(server, group)
             else:
                 try:
                     status = await self.query_service.query(
                         command.argument, allow_private=self.config.query.allow_private_connect
                     )
+                    status = await self.queries.enrich_map(status)
                 except TargetNotAllowed:
                     await reply.text("临时查询仅允许公网地址；私网服务器需由维护者加入本群配置。")
                     return
         target = server or ServerConfig(name=status.alias, address=status.address)
         await self._card(
             reply,
-            server_card(status, safe_mode=self.config.safe_mode, demo=self.demo_data),
+            server_card(status, safe_mode=self.config.safe_mode),
             server=target,
         )
         if self.settings.reply_format == "markdown":
             return
         url = connect_url(target, self.config.connect_base_url)
         text = f"connect {status.address}" + (f"\n{url}" if url else "")
-        await reply.connection(
-            f"连接{target.name}"[:20], text, url, buttons=self.settings.connect_buttons
-        )
+        await reply.connection("进入服务器", text, url, buttons=self.settings.connect_buttons)

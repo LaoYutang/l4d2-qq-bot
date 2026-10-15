@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -23,7 +24,7 @@ def test_native_content_is_bounded_and_cannot_inject_markup():
     content = markdown_card(card, connection_command="connect 203.0.113.1:27015")
     assert len(content.encode("utf-8")) <= 3200
     assert "<qqbot-at-everyone" not in content
-    assert "\\[恶意\\]\\(" in content
+    assert "&#91;恶意&#93;(" in content
     assert "已省略" in content
     assert "connect 203.0.113.1:27015" in content and content.endswith("模拟数据")
 
@@ -43,8 +44,14 @@ async def test_simultaneous_queries_keep_button_targets_in_the_same_single_messa
         ServerConfig(name="对抗服", address="203.0.113.20:27016", aliases=["2服"])
     )
     renderer = AsyncMock()
+    queries = AsyncMock()
+
+    async def query_data(address, *, alias, **kwargs):
+        return replace(sample_statuses()[0], alias=alias, address=address)
+
+    queries.query.side_effect = query_data
     app = BotApplication(
-        client, config, Settings(_env_file=None), renderer, AsyncMock(), demo_data=True
+        client, config, Settings(_env_file=None), renderer, AsyncMock(), query_service=queries
     )
 
     async def query(index):
@@ -60,11 +67,24 @@ async def test_simultaneous_queries_keep_button_targets_in_the_same_single_messa
     for index, address in [(1, "203.0.113.10:27015"), (2, "203.0.113.20:27016")]:
         payload = by_id[f"query-{index}"]
         assert payload["msg_type"] == 2
-        assert f"connect {address}" in payload["markdown"]["content"]
+        assert "connect " not in payload["markdown"]["content"]
+        assert "查询时间" not in payload["markdown"]["content"]
+        assert "已脱敏" not in payload["markdown"]["content"]
         button = payload["keyboard"]["content"]["rows"][0]["buttons"][0]
+        assert button["render_data"]["label"] == "进入服务器"
         assert button["action"]["data"] == f"https://steam-connect.example.test/{address}"
     client.upload_png.assert_not_awaited()
     renderer.render.assert_not_called()
+
+
+def test_server_title_preserves_parentheses_without_qq_math_delimiters():
+    status = replace(sample_statuses()[0], server_name="真实服务器(中文说明)")
+    card = server_card(status)
+    content = markdown_card(card)
+    assert content.startswith("# 真实服务器(中文说明)")
+    assert r"\(" not in content and r"\)" not in content
+    assert "已脱敏" not in content and "查询时间" not in content
+    assert "connect " not in content
 
 
 async def test_missing_url_uses_explicit_command_button():

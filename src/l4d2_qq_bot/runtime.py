@@ -9,6 +9,10 @@ import aiohttp
 from .app import BotApplication
 from .cards.renderer import CardRenderer
 from .config import AppConfig, Settings
+from .integrations.heybox import HeyboxVoiceClient
+from .integrations.http import ExternalHTTP
+from .integrations.maps import MapNameClient
+from .integrations.workshop import WorkshopClient
 from .qq.client import QQClient
 from .qq.discovery import DiscoveryRecorder
 from .qq.gateway import QQGateway
@@ -21,7 +25,6 @@ async def serve(
     settings: Settings,
     config: AppConfig | None,
     *,
-    demo_data: bool = False,
     duration_seconds: float = 0,
 ) -> None:
     settings.require_credentials()
@@ -33,7 +36,10 @@ async def serve(
         pass
     discovery = DiscoveryRecorder(settings.discovery_path)
     timeout = aiohttp.ClientTimeout(total=settings.http_timeout_seconds)
-    async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+    async with (
+        aiohttp.ClientSession(timeout=timeout, trust_env=True) as session,
+        aiohttp.ClientSession(trust_env=True) as external_session,
+    ):
         client = QQClient(
             session,
             app_id=settings.app_id,
@@ -47,17 +53,32 @@ async def serve(
                 group.group_openid.startswith(("REPLACE_", "DEMO_")) for group in config.groups
             ):
                 raise ValueError("请先运行 discover 获取群 OpenID，再替换 config.json 的群占位值")
+            external_http = ExternalHTTP(
+                external_session,
+                timeout=config.integrations.timeout_seconds,
+                concurrency=config.integrations.concurrency,
+            )
             app = BotApplication(
                 client,
                 config,
                 settings,
-                CardRenderer(settings.card_font_path),
+                CardRenderer(settings.card_font_path) if settings.reply_format == "image" else None,
                 discovery,
-                demo_data=demo_data,
+                maps=MapNameClient(external_http, config.map_name_url),
+                voice=HeyboxVoiceClient(
+                    external_http,
+                    settings.heybox_bot_id,
+                    settings.heybox_token.get_secret_value(),
+                ),
+                workshop=WorkshopClient(
+                    external_http,
+                    api_url=config.integrations.workshop_api_url,
+                    max_items=config.integrations.workshop_max_items,
+                ),
             )
             app.start()
             on_event = app.offer_event
-            logger.info("查询数据模式：%s", "模拟（卡片会明确标记）" if demo_data else "真实 A2S")
+            logger.info("查询数据模式：真实 A2S，外部查询使用真实接口")
             logger.info("卡片回复格式：%s", settings.reply_format)
         else:
 

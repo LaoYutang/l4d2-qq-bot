@@ -9,7 +9,10 @@ from .views import clean_text
 
 def escape_text(value: str, limit: int = 200) -> str:
     value = html.escape(clean_text(value, limit), quote=False)
-    return re.sub(r"([\\`*_{}\[\]()#+!|>~-])", r"\\\1", value)
+    # QQ treats \( ... \) and \[ ... \] as math delimiters. Bare parentheses
+    # are ordinary prose; entities keep square brackets literal without creating links.
+    value = re.sub(r"([\\`*_{}#+!|>~-])", r"\\\1", value)
+    return value.replace("[", "&#91;").replace("]", "&#93;")
 
 
 def markdown_card(card: Card, *, connection_command: str = "", max_bytes: int = 3200) -> str:
@@ -17,6 +20,12 @@ def markdown_card(card: Card, *, connection_command: str = "", max_bytes: int = 
     ending = []
     if connection_command:
         ending.append(f"**连接指令**\n{escape_text(connection_command)}")
+    for link in card.links[:2]:
+        if len(link.url) <= 512:
+            url = link.url.replace("(", "%28").replace(")", "%29").replace("\\", "%5C")
+            ending.append(f"[{escape_text(link.label, 40)}]({url})")
+        else:
+            ending.append(f"{escape_text(link.label, 40)}：请使用下方按钮。")
     if card.footer:
         ending.append(f"> {escape_text(card.footer)}")
     suffix = "\n\n".join(ending)

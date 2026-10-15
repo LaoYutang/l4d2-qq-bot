@@ -9,7 +9,7 @@ from aiohttp import WSMsgType, web
 from l4d2_qq_bot.app import BotApplication, connect_url
 from l4d2_qq_bot.cards.renderer import CardRenderer
 from l4d2_qq_bot.config import ServerConfig, Settings
-from l4d2_qq_bot.demo import sample_config, sample_event
+from l4d2_qq_bot.demo import sample_config, sample_event, sample_statuses
 from l4d2_qq_bot.qq.client import QQAPIError, QQClient
 from l4d2_qq_bot.qq.discovery import DiscoveryRecorder
 from l4d2_qq_bot.qq.gateway import GatewayFatalError, QQGateway
@@ -79,7 +79,11 @@ async def test_ws_event_to_card_and_passive_reply(
     recorder = DiscoveryRecorder(settings.discovery_path)
     config = sample_config()
     config.connect_base_url = "https://connect.example.test"
-    application = BotApplication(client, config, settings, CardRenderer(), recorder, demo_data=True)
+    queries = AsyncMock()
+    queries.query.return_value = sample_statuses()[0]
+    application = BotApplication(
+        client, config, settings, CardRenderer(), recorder, query_service=queries
+    )
     application.start()
     connection = QQGateway(client, application.offer_event, max_backoff_seconds=0.01)
     task = asyncio.create_task(connection.run())
@@ -98,11 +102,14 @@ async def test_ws_event_to_card_and_passive_reply(
             assert not uploaded
             assert len(received) == 1 and received[0]["msg_type"] == 2
             assert received[0]["msg_seq"] == 1
-            assert "模拟数据" in received[0]["markdown"]["content"]
+            assert "模拟数据" not in received[0]["markdown"]["content"]
             assert "路过的幸存者" not in received[0]["markdown"]["content"]
             button = received[0]["keyboard"]["content"]["rows"][0]["buttons"][0]
             assert button["action"]["type"] == 0
             assert button["action"]["data"] == "https://connect.example.test/203.0.113.10:27015"
+            queries.query.assert_awaited_once_with(
+                "203.0.113.10:27015", alias="合作服", allow_private=True, include_players=True
+            )
         await recorder.flush()
         assert settings.discovery_path.is_file()
     finally:

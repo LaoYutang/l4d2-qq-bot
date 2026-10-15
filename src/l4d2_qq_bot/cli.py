@@ -13,7 +13,6 @@ from . import __version__
 from .cards.renderer import CardRenderer
 from .cards.views import server_card
 from .config import Settings, load_config
-from .demo import run_demo, sample_statuses
 from .qq.client import QQAPIError, QQTransportError
 from .qq.gateway import GatewayFatalError
 from .runtime import serve
@@ -21,7 +20,7 @@ from .services.query import QueryService
 
 
 def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="L4D2 QQ Bot · 初始化与卡片验收工具")
+    parser = argparse.ArgumentParser(description="L4D2 QQ Bot · 实时查询与原生卡片机器人")
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate = subparsers.add_parser("validate", help="只校验业务配置，不连接网络")
@@ -38,9 +37,6 @@ def create_parser() -> argparse.ArgumentParser:
     query.add_argument("--timeout", type=float, default=3.0)
     run = subparsers.add_parser("run", help="连接 QQ WS，处理配置群中的真实消息")
     run.add_argument("--config", type=Path, default=None)
-    run.add_argument(
-        "--demo-data", action="store_true", help="QQ 真实收发，查询结果使用标记过的模拟数据"
-    )
     discover = subparsers.add_parser("discover", help="连接 QQ，只发现群 OpenID，不回复消息")
     discover.add_argument("--duration", type=float, default=120, help="监听秒数，0 表示持续运行")
     return parser
@@ -62,7 +58,7 @@ def main() -> int:
                 asyncio.run(serve(settings, None, duration_seconds=args.duration))
             else:
                 config = load_config(args.config or settings.config_path)
-                asyncio.run(serve(settings, config, demo_data=args.demo_data))
+                asyncio.run(serve(settings, config))
             return 0
         if args.command == "validate":
             config = load_config(args.config or settings.config_path)
@@ -72,11 +68,15 @@ def main() -> int:
             return 0
         renderer = CardRenderer(settings.card_font_path)
         if args.command == "demo":
+            from .demo import run_demo
+
             report = run_demo(args.output, renderer, args.event)
             print(f"离线示例已生成：{(args.output / 'index.html').resolve()}")
             print(f"{len(report['checks'])} 项自检通过，4 张卡片；未使用网络，未验证真实 QQ 收发。")
             return 0
         if args.command == "preview":
+            from .demo import sample_statuses
+
             card = server_card(sample_statuses()[0], demo=True)
             status = None
         else:

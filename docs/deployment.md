@@ -14,7 +14,7 @@ docker compose logs -f --tail 30 bot
 docker compose down
 ```
 
-Compose 仅挂载只读配置、注入 `.env`，使用非 root、只读根文件系统和可写 data 卷。OpenID 发现记录保存在 data 卷内。默认是真实 A2S 数据、原生 Markdown 卡片和动态连接按钮；在 config.json 自定义 connect_base_url。需要群内模拟卡片测试时，将 command 临时改为 `["run", "--config", "/app/config.json", "--demo-data"]` 后启动。
+Compose 仅挂载只读配置、注入 `.env`，使用非 root、只读根文件系统和可写 data 卷。OpenID 发现记录保存在 data 卷内。run 始终使用真实 A2S 与外部接口，原生 Markdown 卡片和“进入服务器”按钮为默认展示；在 config.json 自定义 connect_base_url。离线外观演示使用单独的 demo 命令，不能再给 run 添加 --demo-data。
 
 主机和 Docker 实例只保留一份在线；WS 连接使用出站 HTTPS/WSS，A2S 使用到游戏服务器的出站 UDP。QQ 平台的沙箱成员、群事件权限及出口 IP 白名单需在应用后台满足。
 

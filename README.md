@@ -2,7 +2,7 @@
 
 独立运行的 Left 4 Dead 2 QQ 官方机器人，通过 **WebSocket 接收事件、OpenAPI 发送 QQ 原生 Markdown 卡片与动态连接按钮**。目标是完整承接 [l4d2-with-astrbot](https://github.com/LaoYutang/l4d2-with-astrbot) 的业务能力，移除 AstrBot 依赖。
 
-已接入 QQ 官方 WS 与群消息收发，支持服务器查询、总览、地址列表。默认单服查询只回复一条原生卡片，底部挂载本次服务器对应的连接按钮；用户已在真实群确认卡片和按钮可见。可以用 `run` 查询真实服务器，也可以用 `run --demo-data` 在真实 QQ 群中验收模拟数据。语音、工坊和管理操作仍按 roadmap 迁移。
+已接入 QQ 官方 WS 与群消息收发，服务器查询、总览和临时 connect 均使用真实 A2S。已接入地图真名、黑盒语音和 Steam 工坊单品 / 合集查询；外部接口缺配置或失败时明确说明，不生成虚构数据。用户已在真实群确认服务器真名和实时数据正常。管理操作仍按 roadmap 开发。
 
 - [开发约定](AGENTS.md)
 - [整体规划与功能对照](docs/roadmap.md)
@@ -29,13 +29,13 @@ uv run l4d2-qq-bot discover --duration 120
 看到“QQ WS 已登录”后，在测试群 @机器人发送“帮助”。此模式不会回复，群 / 成员 OpenID 写入 `.cache/qq-discovery.json`。将需要测试的群 OpenID 填进 `groups[].group_openid`；不能用普通群号替代。只配置本次要启用的群。
 
 ```bash
-# QQ 真实收发，卡片标记为模拟数据；适合先验收外观。
-uv run l4d2-qq-bot run --config config.json --demo-data
-# QQ 真实收发，使用配置服务器 / connect 目标的真实 A2S 数据。
+# 群聊入口始终使用真实数据。
 uv run l4d2-qq-bot run --config config.json
 ```
 
-在群内 @机器人发送 `帮助`、`查询1服`、`综合查询`、`服务器列表` 或 `connect IP:Port`。地址列表每页 6 台，`服务器列表 2` 看下一页。默认不发等待提示，避免占用被动回复次数。未配置群、未匹配的服务器名不会回复。修改 `.env` / 配置后重启；不要同时运行两份实例。
+在群内 @机器人发送 `帮助`、`查询1服`、`综合查询`、`服务器列表`、`connect IP:Port`、`语音1服` 或 Steam 工坊链接。地址列表每页 6 台，`服务器列表 2` 看下一页。默认不发等待提示，避免占用被动回复次数。未配置群、未匹配的快捷名不会回复。修改 `.env` / 配置后重启；不要同时运行两份实例。
+
+`servers[].name` 是查询快捷名，例如 `1服`；`aliases` 可添加其他输入别名。卡片标题和综合查询展示的是 A2S 返回的真实 `server_name`，配置快捷名只作辅助标识。单服卡片保留玩家名脱敏，隐藏“已脱敏”提示、连接指令和查询时间，底部仅显示“进入服务器”按钮。按钮被拒绝时才提供连接指令作为补救。
 
 默认 `.env` 为 `L4D2_REPLY_FORMAT=markdown`、`L4D2_CONNECT_BUTTONS=true`。卡片正文和按钮在同一个发送请求中提交，不需要图片托管或 Markdown 模板 ID。自定义按钮仍受应用权限限制；若被平台拒绝，会在群回复与日志中明确提示。
 
@@ -50,6 +50,15 @@ uv run l4d2-qq-bot run --config config.json
 例如 1服的 address 为 `106.54.214.111:37015`，其按钮跳转 `https://steam-connect.laoyutang.cn/106.54.214.111:37015`；查询 2服时自动使用 2服的地址。每服的 `connect_url` 可覆盖这一规则。基础地址留空时显示填入连接指令按钮，不假装可以直接跳转游戏；Steam 的实际唤起由连接网页和客户端处理。
 
 需要 PNG 回复时可设置 `L4D2_REPLY_FORMAT=image`，这一模式会发送图片和补充连接文字。
+
+## 扩展查询配置
+
+- 地图真名：设置 `map_name_url`，按原项目协议请求 `GET 基础地址/地图代码`，读取 UTF-8 纯文本，缓存 1 小时并合并并发请求。未配置或接口失败时保留服务器实际返回的地图代码。
+- 黑盒语音：在 `.env` 填写 `L4D2_HEYBOX_BOT_ID`、`L4D2_HEYBOX_TOKEN`，本群填写 `hh_room_id`，各服务器填写 `hh_channel_id`。`语音1服` 查询人数 / 名单；单服和综合查询附带频道人数。人数每次实时查询，昵称缓存 10 分钟。昵称失败保留已取得的人数，无法获取人数时不显示为零。
+- Steam 工坊：默认调用 Steam 官方详情与合集接口，无需 Steam API Key。支持直接发链接、`工坊 ID`、`工坊 ID 页码`；合集最多读取前 20 项，每页展示一项。显示实际标题、大小及 API 返回的下载地址；未提供下载链接时提示在 Steam 订阅。
+- 原项目下载解析 API：可在 `integrations.workshop_api_url` 配置兼容 `POST [数字 ID]` 的接口。默认留空使用 Steam 官方接口。`integrations.timeout_seconds`、`concurrency`、`workshop_max_items` 控制超时、外部请求并发和合集上限。
+
+QQ 和外部 API 使用独立 HTTP 会话。黑盒 Token 仅通过对应请求头传递，不写入 QQ 请求、日志或卡片。
 
 ## 本地离线预览
 
@@ -93,9 +102,9 @@ cp config.example.json config.json
 | `connect IP:Port` | 临时查询 | 已接入；默认仅公网，可信配置服允许私网 |
 | `综合查询` | 多服务器概览、离线状态 | 已接入；最多 4 张总览卡片 |
 | `服务器列表` / `服务器地址` / `连接指令` | 原生卡片内可复制连接指令 | 已接入，支持页码 |
-| `语音 1服` | 黑盒频道名单、在线人数 | API 复用方案已规划 |
+| `语音 1服` | 黑盒频道名单、在线人数 | 已接真实 API，需配置黑盒凭据与频道 |
 | `设置 1服 status` / `重启 1服` | 管理员操作、结果卡片 | 已规划 |
-| Steam 创意工坊链接 | 单品 / 合集、大小、可用下载地址 | 已规划 |
+| Steam 创意工坊链接 / `工坊 ID 页码` | 单品 / 合集、大小、可用下载地址 | 已接 Steam 官方接口；兼容原解析 API |
 | QQ 闪传链接 | 选服、选文件、面板下载与安装 | 已规划 |
 
 Python + asyncio + aiohttp + python-a2s + Pillow；不需要安装 AstrBot。完整验收项和实现先后顺序见 roadmap。
