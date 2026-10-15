@@ -9,7 +9,7 @@ from l4d2_qq_bot.cards.markdown import markdown_card
 from l4d2_qq_bot.cards.views import server_card
 from l4d2_qq_bot.config import ServerConfig, Settings
 from l4d2_qq_bot.demo import sample_config, sample_event, sample_statuses
-from l4d2_qq_bot.domain import Card, CardSection
+from l4d2_qq_bot.domain import Card, CardSection, Player
 from l4d2_qq_bot.qq.client import QQAPIError, QQTransportError
 from l4d2_qq_bot.qq.protocol import GroupMessage
 from l4d2_qq_bot.qq.replies import ReplySession, connection_keyboard
@@ -34,6 +34,34 @@ def test_native_preserves_offline_and_unknown_player_states():
     assert "离线" in markdown_card(server_card(statuses[1], demo=True))
     content = markdown_card(server_card(statuses[2], demo=True))
     assert "获取失败或未开放" in content and "人数: 4/16" in content
+
+
+def test_native_player_list_is_compact_and_escapes_player_markup():
+    status = replace(
+        sample_statuses()[0],
+        players=(
+            Player("地图: [玩家]*", duration_seconds=90),
+            Player("- <qqbot-at-everyone />", duration_seconds=7200),
+        ),
+        player_count=2,
+    )
+    content = markdown_card(
+        server_card(status, safe_mode=False, connection_url="https://connect.example.test/1")
+    )
+    assert (
+        "## 在线玩家:\n\n"
+        "- 地图: &#91;玩家&#93;\\* (1:30)\n"
+        "- \\- &lt;qqbot-at-everyone /&gt; (2:00:00)"
+    ) in content
+    assert "<qqbot-at-everyone" not in content
+    assert "\n\n**点击直连: https://connect.example.test/1**" in content
+
+
+@pytest.mark.parametrize("players", [(), None])
+def test_native_player_list_does_not_bullet_empty_or_unknown_states(players):
+    status = replace(sample_statuses()[0], players=players)
+    content = markdown_card(server_card(status))
+    assert not any(line.startswith("- ") for line in content.splitlines())
 
 
 @pytest.mark.parametrize("with_voice", [False, True])
