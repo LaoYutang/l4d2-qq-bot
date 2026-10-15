@@ -58,7 +58,7 @@ A2S 区分 INFO 失败、PLAYER 失败和真正空名单。players=None 为未�
 
 地图统一使用 `GET {map_name_url}/{map_code}`，2 秒超时，UTF-8 文本，成功缓存 3600 秒；失败不缓存并返回原代码。同客户端服务所有群、单服、总览和临时 connect；CLI 也使用相同 QueryCoordinator / MapNameClient。
 
-黑盒沿用上游频道、房间 API 和 token 请求头。频道人数实时查询；昵称缓存 600 秒、每页 100、最多 20 页。字段缺失和失败不能视作零人；昵称失败仍保留真实人数。
+黑盒沿用上游频道、房间 API 和 token 请求头。频道人数实时查询；昵称缓存 600 秒、每页 100、最多 20 页。成功响应的 result 对象中 user_ids 缺失或为 null 时，按上游空频道语义处理；错误状态、非对象 result 和其他非法名单类型仍报错，不伪装成零人。昵称失败仍保留真实人数。
 
 工坊默认 GetPublishedFileDetails / GetCollectionDetails，用合集接口确认类型。也支持原版 `workshop_api_url` POST 数字 ID 数组；children 合集保序，兼容解析 API 的可下载父项保留。默认最多 20 项，原版正文聚合展示；显式页码展示单项。缺下载 URL 保留元信息，不猜测链接。
 

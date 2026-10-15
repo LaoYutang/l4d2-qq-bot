@@ -368,7 +368,9 @@ async def test_long_plain_text_keeps_literal_content_and_reply_context():
     await reply.text(text)
     calls = client.send_group.await_args_list
     assert [call.args[2] for call in calls] == list(range(1, len(chunks) + 1))
-    assert all(call.args[1] == message.message_id and call.args[3]["msg_type"] == 0 for call in calls)
+    assert all(
+        call.args[1] == message.message_id and call.args[3]["msg_type"] == 0 for call in calls
+    )
     assert [call.args[3]["content"] for call in calls] == chunks
     assert all("markdown" not in call.args[3] and "keyboard" not in call.args[3] for call in calls)
 
