@@ -29,7 +29,7 @@ def test_unmatched_chatter_never_blocks_command_queue(tmp_path):
         DiscoveryRecorder(tmp_path / "discovery.json"),
     )
     for index in range(100):
-        for content in ("今晚一起玩吧", "查询不存在", "语音不存在"):
+        for content in ("今晚一起玩吧", "查询不存在", "语音不存在", "查询不存在语音", "不存在语音"):
             assert app.offer_event(full_group_event(content, f"chat-{index}-{content}"))
     assert app.queue.empty()
     assert app.offer_event(full_group_event("查询1服", "command-1"))

@@ -50,11 +50,15 @@ def parse_command(content: str) -> Command | None:
             return Command(kind, content.removeprefix(prefix).strip())
     if match := re.search(r"https?://qfile\.qq\.com/q/[A-Za-z0-9_-]+(?=$|[\s。，；,;?#])", content):
         return Command(CommandKind.FLASH, match[0])
+    voice_argument = None
     if content.startswith("语音"):
-        argument = content.removeprefix("语音").strip()
-        if not argument:
+        voice_argument = content.removeprefix("语音").strip()
+    elif content.endswith("语音"):
+        voice_argument = content.removeprefix("查询").removesuffix("语音").strip()
+    if voice_argument is not None:
+        if not voice_argument:
             raise ValueError("请输入服务器快捷名，例如：语音1服")
-        return Command(CommandKind.VOICE, argument)
+        return Command(CommandKind.VOICE, voice_argument)
     if match := re.fullmatch(r"(?:服务器列表|服务器地址|连接指令)(?:\s+([0-9]{1,3}))?", content):
         page = int(match[1]) if match[1] else 0
         if match[1] and page < 1:

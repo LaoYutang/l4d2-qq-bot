@@ -60,6 +60,8 @@ def test_native_layout_keeps_the_existing_visible_body(card):
         ("综合查询", "L4D2 服务器概览", 2),
         ("服务器列表", "服务器列表", 2),
         ("语音1服", "合作服 语音频道当前无人在线。", 0),
+        ("查询1服语音", "合作服 语音频道当前无人在线。", 0),
+        ("1服语音", "合作服 语音频道当前无人在线。", 0),
         ("获取群ID", "DEMO_GROUP_OPENID", 0),
         ("获取用户ID", "DEMO_MEMBER_OPENID", 0),
         ("查询", "请输入服务器名称，例如：查询 主服务器", 0),
@@ -101,6 +103,11 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
         assert any(expected in line for line in lines)
         if command == "帮助":
             assert "工坊" not in payload["markdown"]["content"]
+            assert "查询服务器名语音" in payload["markdown"]["content"]
+            assert "服务器名语音" in payload["markdown"]["content"]
+        if command in {"语音1服", "查询1服语音", "1服语音"}:
+            voice.query.assert_awaited_once()
+            query.query.assert_not_awaited()
         client.upload_png.assert_not_awaited()
     finally:
         await app.close()

@@ -41,6 +41,33 @@ def test_alias_matching_ignores_whitespace(text):
     assert server is not None and server.name == "合作服"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "语音1服",
+        "查询1服语音",
+        "1服语音",
+        "查询合作服语音",
+        "合作服语音",
+        "查询 1 服 语音",
+        "1 服 语音",
+        "/1服语音",
+        "<@!bot_id> /查询1服语音",
+    ],
+)
+def test_voice_query_forms_match_the_same_server(text):
+    command = parse_command(text)
+    assert command is not None and command.kind == CommandKind.VOICE
+    server = match_server(sample_config().groups[0].servers, command.argument)
+    assert server is not None and server.name == "合作服"
+
+
+@pytest.mark.parametrize("text", ["语音", "查询语音", "查询   语音"])
+def test_voice_queries_require_a_server_name(text):
+    with pytest.raises(ValueError, match="请输入服务器快捷名"):
+        parse_command(text)
+
+
 def test_unmatched_server_and_group_do_not_route():
     config = sample_config()
     event = sample_event()

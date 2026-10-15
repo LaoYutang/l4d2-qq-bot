@@ -72,6 +72,8 @@ A2S 区分 INFO 失败、PLAYER 失败和真正空名单。players=None 为未�
 
 黑盒沿用上游频道、房间 API 和 token 请求头。频道人数实时查询；昵称缓存 600 秒、每页 100、最多 20 页。语音昵称不参与 safe_mode 脱敏，Markdown 与 PNG 均显示原名，仅清理控制字符和限制长度；safe_mode 只作用于游戏玩家名。成功响应的 result 对象中 user_ids 缺失或为 null 时，按上游空频道语义处理；错误状态、非对象 result 和其他非法名单类型仍报错，不伪装成零人。昵称失败仍保留真实人数。
 
+语音查询支持“语音XX”“查询XX语音”“XX语音”，XX 按本群服务器名或别名精确匹配，忽略空白和大小写。“查询XX语音”优先识别为语音查询；未匹配服务器的消息不入队、不回复。
+
 面板沿用 `POST /download/link/parse`（JSON url）与 `POST /download/add`（表单 url / filename / referer），使用该服 `Authorization: Bearer {token}`。解析与添加分别 60 / 30 秒，无自动重试。只接受面板标记支持且扩展名为 .vpk/.zip/.rar/.7z 的文件，文件名去路径、清理控制字符。
 
 Source RCON 使用 TCP，认证后才发送指令，检查包大小、请求 ID 和结束标记，合并分包结果并限制响应量，总超时 15 秒。_restart 在成功写入后返回原版发送文案，不把发送失败报告成重启成功。
