@@ -54,7 +54,7 @@ examples/                # 模拟群事件与配置说明
 
 ## QQ 官方协议
 
-核对时间：2026-10-15。默认仅启用 `GROUP_AND_C2C_EVENT = 1 << 25` 中的群 @ 事件处理，其他场景后续明确接入，不共享群配置猜测用户身份。
+核对时间：2026-10-15。使用 `GROUP_AND_C2C_EVENT = 1 << 25`，处理 `GROUP_AT_MESSAGE_CREATE` 和 `GROUP_MESSAGE_CREATE`。全量事件需 QQ 端开启“接收所有消息”；只对匹配的指令回复，未匹配消息在入队前过滤，不存储聊天正文。两类事件使用相同的群 + 消息 ID 去重，避免重复回复。其他场景后续明确接入，不共享群配置猜测用户身份。
 
 - Token：POST `https://api.bot.qq.com/app/getAppAccessToken`，提交 appId / clientSecret；HTTP 200 也必须检查业务 code。使用返回的 expires_in，临过期刷新且串行合并刷新请求。
 - REST：`Authorization: QQBot {access_token}`；GET `/gateway` 获取 WS URL，不硬编码旧 WSS 地址。
@@ -91,6 +91,7 @@ examples/                # 模拟群事件与配置说明
 - [访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
 - [事件与 WebSocket](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html)
 - [群事件字段](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)
+- [群消息全量模式与免 @ 前提](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)
 - [群富媒体上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html)
 - [群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
 - [原生按钮、自定义权限与跳转字段](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)

@@ -91,7 +91,10 @@ async def serve(
                     )
                 return True
 
-            logger.info("只监听模式：请在测试群 @ 机器人，OpenID 会写入本地 discovery 文件")
+            logger.info(
+                "只监听模式：请在测试群发送消息（未开启全量接收时需 @ 机器人），"
+                "OpenID 会写入本地 discovery 文件"
+            )
         gateway = QQGateway(client, on_event)
         writer = asyncio.create_task(discovery.run(), name="qq-discovery-writer")
         gateway_task = asyncio.create_task(gateway.run(), name="qq-gateway")

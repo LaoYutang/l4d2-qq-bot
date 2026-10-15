@@ -42,21 +42,29 @@ def test_invalid_hello_interval(interval):
         GatewayState().accept({"op": 10, "d": {"heartbeat_interval": interval}})
 
 
-def test_reply_uses_message_id_not_envelope_id():
-    routed = route_event(sample_event(), sample_config())
+@pytest.mark.parametrize("event_type", ["GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"])
+def test_reply_uses_message_id_not_envelope_id(event_type):
+    event = sample_event()
+    event["t"] = event_type
+    event["d"]["content"] = "查询1服"
+    routed = route_event(event, sample_config())
     assert routed is not None
     assert routed.message.message_id == "DEMO_MESSAGE_ID"
     assert routed.message.member_openid == "DEMO_MEMBER_OPENID"
 
 
 @pytest.mark.parametrize("field", ["id", "group_openid", "author"])
-def test_malformed_group_event_not_routed(field):
+@pytest.mark.parametrize("event_type", ["GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"])
+def test_malformed_group_event_not_routed(field, event_type):
     event = copy.deepcopy(sample_event())
+    event["t"] = event_type
     del event["d"][field]
     assert GroupMessage.from_payload(event) is None
 
 
-def test_bot_messages_ignored():
+@pytest.mark.parametrize("event_type", ["GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"])
+def test_bot_messages_ignored(event_type):
     event = sample_event()
+    event["t"] = event_type
     event["d"]["author"]["bot"] = True
     assert route_event(event, sample_config()) is None

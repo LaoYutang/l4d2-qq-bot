@@ -101,8 +101,23 @@ class BotApplication:
             return True
         if self.discovery.record(message):
             logger.info("发现群消息，OpenID 已保存到本地 discovery 文件")
-        if not any(group.group_openid == message.group_openid for group in self.config.groups):
+        group = next(
+            (item for item in self.config.groups if item.group_openid == message.group_openid), None
+        )
+        if group is None:
             return True
+        try:
+            command = parse_command(message.content)
+            if command is None:
+                return True
+            if (
+                command.kind in {CommandKind.QUERY, CommandKind.VOICE}
+                and match_server(group.servers, command.argument) is None
+            ):
+                return True
+        except ValueError:
+            # Recognized commands with invalid arguments get usage help from a worker.
+            pass
         now = time.monotonic()
         while self._seen and next(iter(self._seen.values())) <= now:
             self._seen.popitem(last=False)
