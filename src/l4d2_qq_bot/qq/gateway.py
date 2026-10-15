@@ -112,7 +112,7 @@ class QQGateway:
                     if action == "ready" or payload.get("t") == "RESUMED":
                         self._ready_this_connection = True
                         self.ready.set()
-                        logger.info("QQ WS 已登录，等待群 @ 消息")
+                        logger.info("QQ WS 已登录，等待群命令（支持 @ 与已授权的全量消息）")
                     elif action == "reconnect":
                         raise GatewayReconnect("QQ WS 要求重连")
                     elif action == "identify":

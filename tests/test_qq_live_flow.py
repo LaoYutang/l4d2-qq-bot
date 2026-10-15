@@ -18,8 +18,9 @@ from l4d2_qq_bot.qq.replies import ReplySession, split_text
 
 
 @pytest.mark.parametrize("reply_format", ["image", "markdown"])
+@pytest.mark.parametrize("event_type", ["GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"])
 async def test_ws_event_to_card_and_passive_reply(
-    reply_format, local_server, http_session, tmp_path
+    reply_format, event_type, local_server, http_session, tmp_path
 ):
     received = []
     auth = []
@@ -38,8 +39,17 @@ async def test_ws_event_to_card_and_passive_reply(
         await ws.send_json({"op": 10, "d": {"heartbeat_interval": 40}})
         auth.append(await ws.receive_json())
         await ws.send_json({"op": 0, "t": "READY", "s": 1, "d": {"session_id": "session"}})
-        await ws.send_json(sample_event())
-        await ws.send_json(sample_event())
+        event = sample_event()
+        event["t"] = event_type
+        event["d"]["content"] = "查询1服"
+        await ws.send_json(event)
+        # The same source message can arrive through both group event names.
+        event["t"] = (
+            "GROUP_MESSAGE_CREATE"
+            if event_type == "GROUP_AT_MESSAGE_CREATE"
+            else "GROUP_AT_MESSAGE_CREATE"
+        )
+        await ws.send_json(event)
         async for message in ws:
             if message.type == WSMsgType.TEXT and message.json().get("op") == 1:
                 await ws.send_json({"op": 11})
@@ -91,6 +101,7 @@ async def test_ws_event_to_card_and_passive_reply(
         await asyncio.wait_for(completed.wait(), 5)
         await application.queue.join()
         assert auth[0]["op"] == 2
+        assert auth[0]["d"]["intents"] == 1 << 25
         assert all(message["msg_id"] == "DEMO_MESSAGE_ID" for message in received)
         if reply_format == "image":
             assert len(uploaded) == 1 and uploaded[0].startswith(b"\x89PNG")

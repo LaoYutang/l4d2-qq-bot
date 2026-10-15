@@ -32,7 +32,7 @@
 
 - 使用官方文档核实接口，不假设旧 SDK 或上游默认域名仍然有效。当前默认域名为 `https://api.bot.qq.com`。
 - WS 实现必须保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session；业务处理不得阻塞网关读取和心跳。
-- 先支持 `GROUP_AT_MESSAGE_CREATE`。QQ群的 `group_openid` 和群成员 `member_openid` 都是字符串；不得当成群号 / QQ 号。未配置群不执行命令。
+- 同时支持 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`，后者需 QQ 端开启“接收所有消息”；均使用 `GROUP_AND_C2C_EVENT (1<<25)`。收到消息后按指令匹配，未匹配聊天不入队、不回复，跨两种事件以群和消息 ID 去重。QQ群的 `group_openid` 和群成员 `member_openid` 都是字符串；不得当成群号 / QQ 号。未配置群不执行命令。
 - 默认 `msg_type=2`，同一请求中发送 `markdown.content` 和 `keyboard.content`，不得拆成图片消息和另一条按钮消息来代替原生卡片。用户已在真实群确认能收到原生卡片和连接按钮。
 - 按钮链接由匹配服务器的 `connect_url` 或 `connect_base_url + '/' + address` 得到，不依赖共享的“当前服务器”。基础地址由维护者自定义；无链接配置时可用明确标注的填入指令按钮。
 - Markdown 复用统一视图的脱敏、离线状态和未知玩家状态，转义外部文本，限制长度；平台拒绝按钮 / Markdown 时明确说明，不能声称按钮已成功发送。

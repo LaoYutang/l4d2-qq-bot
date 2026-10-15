@@ -97,7 +97,10 @@ class GroupMessage:
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "GroupMessage | None":
-        if payload.get("op") != OpCode.DISPATCH or payload.get("t") != "GROUP_AT_MESSAGE_CREATE":
+        if payload.get("op") != OpCode.DISPATCH or payload.get("t") not in {
+            "GROUP_AT_MESSAGE_CREATE",
+            "GROUP_MESSAGE_CREATE",
+        }:
             return None
         data = payload.get("d")
         if not isinstance(data, dict) or not isinstance(data.get("author"), dict):
