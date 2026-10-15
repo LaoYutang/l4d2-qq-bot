@@ -103,7 +103,13 @@ class ManagementService:
         return match_server(servers, argument), ""
 
     async def start(
-        self, command: Command, group: GroupConfig, message: GroupMessage, reply: ReplySession
+        self,
+        command: Command,
+        group: GroupConfig,
+        message: GroupMessage,
+        reply: ReplySession,
+        *,
+        timeout_seconds: float = 90,
     ) -> None:
         self._pop(message)
         if message.member_openid not in group.admin_openids:
@@ -151,13 +157,32 @@ class ManagementService:
             action = "重启" if command.kind == CommandKind.RESTART else "指令"
             await reply.text(f"服务器 {server.name} 未配置 RCON 密码，无法执行{action}。")
             return
-        prompt = (
-            f"确认重启 {clean_text(server.name)}？"
-            if text == "_restart"
-            else f"确认向 {clean_text(server.name)} 发送指令: {clean_text(text, 500)}？"
-        )
+        if command.kind == CommandKind.RCON:
+            await self._execute_rcon(
+                server, text, message, reply, timeout_seconds=timeout_seconds
+            )
+            return
+        prompt = f"确认重启 {clean_text(server.name)}？"
         await reply.text(prompt + "（回复“确认”执行，输入其他内容取消，30 秒内有效）")
         self._remember(message, reply, PendingOperation("rcon", server=server, command=text))
+
+    async def _execute_rcon(
+        self,
+        server: ServerConfig,
+        command: str,
+        message: GroupMessage,
+        reply: ReplySession,
+        *,
+        timeout_seconds: float,
+    ) -> None:
+        if timeout_seconds < 16:
+            await reply.text("超时取消")
+            return
+        result = await self.rcon.execute(server.address, server.rcon_password, command)
+        self._audit(message, "rcon", not result.startswith(("RCON 执行出错", "操作超时")))
+        # A misconfigured server may echo the password; never forward it to QQ.
+        secret = server.rcon_password
+        await reply.text(result.replace(secret, "***") if secret else result)
 
     async def respond(
         self,
@@ -184,16 +209,9 @@ class ManagementService:
                 if not server or not server.rcon_password:
                     await reply.text("配置已变更，已取消")
                     return
-                if timeout_seconds < 16:
-                    await reply.text("超时取消")
-                    return
-                result = await self.rcon.execute(
-                    server.address, server.rcon_password, pending.command
+                await self._execute_rcon(
+                    server, pending.command, message, reply, timeout_seconds=timeout_seconds
                 )
-                self._audit(message, "rcon", not result.startswith(("RCON 执行出错", "操作超时")))
-                # A misconfigured server may echo the password; never forward it to QQ.
-                secret = server.rcon_password
-                await reply.text(result.replace(secret, "***") if secret else result)
                 return
             if pending.stage == "server":
                 index = selection(text, len(pending.servers), multiple=False)[0]

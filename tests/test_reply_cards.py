@@ -199,7 +199,7 @@ async def test_address_list_keeps_all_button_targets_within_platform_limits(coun
         await app.close()
 
 
-async def test_management_confirmation_and_redacted_result_are_plain_text():
+async def test_rcon_immediate_redacted_result_is_plain_text():
     client = AsyncMock()
     config = sample_config()
     config.groups[0].admin_openids = ["DEMO_MEMBER_OPENID"]
@@ -213,17 +213,15 @@ async def test_management_confirmation_and_redacted_result_are_plain_text():
     message = replace(GroupMessage.from_payload(sample_event()), content="设置1服 status")
     try:
         await app.handle_message(message, ReplySession(client, message))
-        rcon.execute.assert_not_awaited()
+        assert not management.has_session(message)
+        rcon.execute.assert_awaited_once_with("203.0.113.10:27015", "fixture-rcon", "status")
         confirmation = replace(message, message_id="confirmation", content="确认")
         await app.handle_message(confirmation, ReplySession(client, confirmation))
         rcon.execute.assert_awaited_once_with("203.0.113.10:27015", "fixture-rcon", "status")
         calls = client.send_group.await_args_list
-        assert [call.args[1] for call in calls] == [message.message_id, "confirmation"]
+        assert [call.args[1] for call in calls] == [message.message_id]
         assert all(call.args[2] == 1 and call.args[3]["msg_type"] == 0 for call in calls)
-        assert calls[0].args[3]["content"].splitlines() == [
-            "确认向 合作服 发送指令: status？（回复“确认”执行，输入其他内容取消，30 秒内有效）"
-        ]
-        assert calls[1].args[3]["content"] == "服务器响应: ***"
+        assert calls[0].args[3]["content"] == "服务器响应: ***"
     finally:
         await app.close()
 

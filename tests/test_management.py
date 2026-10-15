@@ -48,7 +48,8 @@ async def test_other_input_cancels_confirmation_in_the_message_router(content):
         await app.close()
 
 
-async def test_rcon_requires_exact_target_permission_and_member_confirmation():
+@pytest.mark.parametrize("command", ["status", "_restart"])
+async def test_rcon_executes_immediately_with_exact_target_and_admin_permission(command):
     rcon = AsyncMock()
     rcon.execute.return_value = "服务器响应: fixture-rcon"
     service = ManagementService(AsyncMock(), rcon)
@@ -61,17 +62,47 @@ async def test_rcon_requires_exact_target_permission_and_member_confirmation():
         message = replace(message, member_openid="admin")
         await service.start(parse_command("设置1服status"), group(), message, reply)
         assert not service.has_session(message)
-        await service.start(parse_command("设置 MyServer status"), group(), message, reply)
-        assert service.has_session(message)
         rcon.execute.assert_not_awaited()
+        await service.start(parse_command(f"设置 MyServer {command}"), group(), message, reply)
+        assert not service.has_session(message)
+        rcon.execute.assert_awaited_once_with("127.0.0.1:27015", "fixture-rcon", command)
+        assert reply.text.await_args.args[0] == "服务器响应: ***"
         confirmation = replace(message, message_id="two", content="确认")
         await service.respond(group(), replace(confirmation, member_openid="other-admin"), reply)
         await service.respond(group(), replace(confirmation, group_openid="other-group"), reply)
-        rcon.execute.assert_not_awaited()
         await service.respond(group(), confirmation, reply)
         await service.respond(group(), confirmation, reply)
-        rcon.execute.assert_awaited_once_with("127.0.0.1:27015", "fixture-rcon", "status")
-        assert reply.text.await_args.args[0] == "服务器响应: ***"
+        rcon.execute.assert_awaited_once_with("127.0.0.1:27015", "fixture-rcon", command)
+    finally:
+        await service.close()
+
+
+@pytest.mark.parametrize(
+    ("password", "timeout_seconds", "expected"),
+    [
+        ("", 90, "服务器 My Server 未配置 RCON 密码，无法执行指令。"),
+        ("fixture-rcon", 15, "超时取消"),
+    ],
+)
+async def test_rcon_does_not_execute_without_password_or_time(
+    password, timeout_seconds, expected
+):
+    service = ManagementService(AsyncMock(), AsyncMock())
+    config = group()
+    config.servers[0].rcon_password = password
+    message = GroupMessage("one", "group", "admin", "设置1服 status")
+    reply = AsyncMock()
+    try:
+        await service.start(
+            parse_command(message.content),
+            config,
+            message,
+            reply,
+            timeout_seconds=timeout_seconds,
+        )
+        service.rcon.execute.assert_not_awaited()
+        assert not service.has_session(message)
+        reply.text.assert_awaited_once_with(expected)
     finally:
         await service.close()
 
@@ -91,6 +122,14 @@ async def test_configuration_change_and_cancel_clear_pending_operations():
         assert reply.text.await_args.args[0] == "已取消"
         service.rcon.execute.assert_not_awaited()
         await service.start(parse_command(message.content), group(), message, reply)
+        assert service.has_session(message)
+        service.rcon.execute.assert_not_awaited()
+        confirmation = replace(message, content="确认")
+        await service.respond(group(), replace(confirmation, member_openid="other-admin"), reply)
+        await service.respond(group(), replace(confirmation, group_openid="other-group"), reply)
+        assert service.has_session(message)
+        service.rcon.execute.assert_not_awaited()
+        await service.respond(group(), replace(message, content="确认"), reply)
         await service.respond(group(), replace(message, content="确认"), reply)
         service.rcon.execute.assert_awaited_once_with("127.0.0.1:27015", "fixture-rcon", "_restart")
     finally:
