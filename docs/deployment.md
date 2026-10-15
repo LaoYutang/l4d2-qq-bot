@@ -39,8 +39,9 @@ docker rm l4d2-demo
 ## GitHub Actions
 
 - `.github/workflows/ci.yml`：分支与 PR 运行 Ruff、Python 3.12 / 3.13 / 3.14 测试、示例与包构建，然后进行 Docker 冒烟。
-- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发。复用 CI，通过 tag / 包版本一致性检查后，发布 `linux/amd64`、`linux/arm64` 镜像到 GHCR。
+- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发，独立执行同等的 Python 多版本检查与 Docker 冒烟。检查与 tag / 包版本一致性校验均通过后，发布 `linux/amd64`、`linux/arm64` 镜像到 GHCR。
 - 无需 Docker Hub 账号；使用自动提供的 GITHUB_TOKEN，发布 job 单独申请 packages:write。
+- setup-uv 固定为已核实存在的 `v10.3.0`；uv 工具仍固定为 `0.11.7`。发布流程不依赖编辑器解析本地 reusable workflow，未绑定 GitHub 远端时也可以校验文件。
 - GitHub 仓库首次发布后，镜像可见性由 GHCR Package 设置管理；私有包拉取需要有权限的账号。
 
 正式 tag `v0.1.0` 生成 `:v0.1.0`、`:0.1.0`、`:0.1`、`:latest`。预发布 `v0.2.0-rc.1` 生成带预发布标记的标签，不更新 `:latest` 或 `:0.2`。
