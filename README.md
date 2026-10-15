@@ -113,4 +113,4 @@ uv run pytest
 - [功能核对与验证记录](docs/parity.md)
 - [后续规划](docs/roadmap.md)
 
-PR / 分支 CI 检查与构建；只有维护者推送 `v*.*.*` tag 才发布 GHCR 多架构镜像。上游和本项目均遵守 AGPL-3.0，来源见 [NOTICE](NOTICE.md)。
+PR / 分支 CI 检查与构建；只有维护者推送 `v*.*.*` tag 才发布 Docker Hub 多架构镜像 `laoyutang/l4d2-qq-bot`。每次仅发布 `latest` 和去掉 `v` 前缀的版本号两个标签，例如 `v0.1.0` 对应 `latest`、`0.1.0`；预发布也更新 `latest`。发布前在仓库 Secrets 配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_PASSWORD`，详见 [部署说明](docs/deployment.md)。上游和本项目均遵守 AGPL-3.0，来源见 [NOTICE](NOTICE.md)。
