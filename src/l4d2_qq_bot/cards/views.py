@@ -268,7 +268,7 @@ def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
         content=(
             f"{clean_text(status.alias)} 语音频道当前无人在线。"
             if status.count == 0
-            else f"=== {clean_text(status.alias)} 语音频道 ===\n在线人数: {status.count}\n"
+            else f"{clean_text(status.alias)} 语音频道\n在线人数: {status.count}\n"
             + (
                 "\n".join(f"- {player_name(name, safe_mode=safe_mode)}" for name in status.names)
                 if status.names is not None
