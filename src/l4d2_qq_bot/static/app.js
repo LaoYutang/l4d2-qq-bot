@@ -14,7 +14,9 @@ async function api(method, body) {
   const result = await response.json();
   if (response.status === 401) {
     try { localStorage.removeItem(PASSWORD_KEY); } catch {}
-    showLogin("密码错误");
+  }
+  if (response.status === 401 || response.status === 429) {
+    showLogin(result.error || "密码错误");
   }
   if (!response.ok) {
     const errors = result.errors?.map(error => error.field + "：" + error.message).join("\n");
@@ -1013,6 +1015,7 @@ async function loadConfig(initialLoad) {
   } catch (error) {
     failed = true;
     loaded = false;
+    if (initialLoad) showLogin(error?.message || "登录失败，请检查密码和服务状态");
     showAlert(error?.message || "读取配置失败");
     showToast("读取配置失败", "error");
   } finally {
@@ -1072,8 +1075,6 @@ async function initialize() {
       document.getElementById("passwordInput").value = "";
       document.getElementById("loginPanel").hidden = true;
       document.querySelector(".page-shell").hidden = false;
-    } else {
-      document.getElementById("loginError").textContent = "登录失败，请检查密码和服务状态";
     }
   });
   document.getElementById("logoutButton").addEventListener("click", async () => {
