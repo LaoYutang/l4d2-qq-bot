@@ -74,7 +74,7 @@ function createEmptyConfig() {
     heybox_bot_id: "",
     heybox_token: "",
     query: { timeout_seconds: 3, concurrency: 4, allow_private_connect: false },
-    integrations: { timeout_seconds: 5, concurrency: 4, workshop_api_url: "", workshop_max_items: 20 },
+    integrations: { timeout_seconds: 5, concurrency: 4 },
     groups: [],
   };
 }

@@ -3,16 +3,7 @@
 import math
 import unicodedata
 
-from ..domain import (
-    Card,
-    CardLink,
-    CardSection,
-    ServerStatus,
-    VoiceStatus,
-    WorkshopItem,
-    WorkshopResult,
-)
-from ..integrations.workshop import workshop_url
+from ..domain import Card, CardLink, CardSection, ServerStatus, VoiceStatus
 
 
 def clean_text(value: str, limit: int = 200) -> str:
@@ -278,82 +269,5 @@ def voice_card(status: VoiceStatus) -> Card:
                 if status.names is not None
                 else "在线人数已获取，成员昵称暂不可用。"
             )
-        ),
-    )
-
-
-def file_size_text(value: int | None) -> str:
-    if value is None:
-        return "接口未提供大小"
-    size = float(value)
-    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-        if size < 1024 or unit == "TiB":
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return "接口未提供大小"
-
-
-def workshop_entry(item: WorkshopItem) -> str:
-    size = item.size_bytes if item.size_bytes is not None else "未知大小"
-    download = (
-        f"下载: {item.download_url}\n"
-        if item.download_url
-        else "接口未提供直接下载地址，请在 Steam 工坊订阅。\n"
-    )
-    if not item.available:
-        download = "条目已删除、私有或接口未返回详情。\n"
-    return (
-        f"标题: {clean_text(item.title) or '未知标题'}\n"
-        f"文件: {clean_text(item.filename)} ({size})\n" + download + "-" * 20
-    )
-
-
-def workshop_card(result: WorkshopResult, *, page: int = 0) -> Card:
-    if result.error:
-        return Card(
-            title="Steam 工坊查询失败",
-            sections=(CardSection("状态", (result.error,)),),
-            footer="",
-            links=(CardLink("打开工坊", workshop_url(result.item_id)),),
-            content=f"解析失败: {result.error}",
-        )
-    if not result.items:
-        return Card(
-            title=clean_text(result.title) or "Steam 工坊合集",
-            subtitle="合集没有公开条目",
-            footer="",
-            links=(CardLink("打开合集", workshop_url(result.item_id)),),
-        )
-    if not 0 <= page <= len(result.items):
-        raise ValueError(f"当前可查看 {len(result.items)} 页，请发送 工坊 {result.item_id} 页码。")
-    item = result.items[max(0, page - 1)]
-    lines = [f"工坊 ID：{item.item_id}"]
-    if item.available:
-        if item.filename:
-            lines.append(f"文件：{clean_text(item.filename)}")
-        lines.append(f"大小：{file_size_text(item.size_bytes)}")
-        if not item.download_url:
-            lines.append("接口未提供直接下载地址，请在 Steam 工坊订阅。")
-    else:
-        lines.append("条目已删除、私有或接口未返回详情。")
-    links = [CardLink("打开工坊", workshop_url(item.item_id))]
-    if item.download_url:
-        links.append(CardLink("下载文件", item.download_url))
-    footer = ""
-    if result.collection:
-        footer = f"合集共 {result.total_count} 项 · 已获取前 {len(result.items)} 项"
-        if page < len(result.items):
-            footer += f" · 下一页：工坊 {result.item_id} {page + 1}"
-    return Card(
-        title=clean_text(item.title) or f"工坊条目 {item.item_id}",
-        subtitle=f"{clean_text(result.title, 100)} · {page}/{len(result.items)}"
-        if result.collection
-        else "Steam 工坊",
-        sections=(CardSection("文件信息", tuple(lines)),),
-        footer=footer,
-        links=tuple(links),
-        content=(
-            f"=== 创意工坊{'合集' if result.collection else '单品'}解析 ===\n"
-            + "\n".join(workshop_entry(entry) for entry in (result.items if page == 0 else (item,)))
         ),
     )

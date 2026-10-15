@@ -11,9 +11,7 @@
   },
   "integrations": {
     "timeout_seconds": 5.0,
-    "concurrency": 4,
-    "workshop_api_url": "",
-    "workshop_max_items": 20
+    "concurrency": 4
   },
   "groups": [
     {

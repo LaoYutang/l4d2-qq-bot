@@ -4,13 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 from aiohttp import web
 
-from l4d2_qq_bot.cards.views import voice_card, workshop_card
-from l4d2_qq_bot.commands import CommandKind, parse_command
+from l4d2_qq_bot.cards.views import voice_card
 from l4d2_qq_bot.integrations.cache import AsyncTTLCache
 from l4d2_qq_bot.integrations.heybox import HeyboxVoiceClient
 from l4d2_qq_bot.integrations.http import ExternalAPIError, ExternalHTTP
 from l4d2_qq_bot.integrations.maps import MapNameClient
-from l4d2_qq_bot.integrations.workshop import WorkshopClient
 
 
 @pytest.mark.parametrize("map_name", ["死亡中心：旅馆", "[三方图] 返回学校"])
@@ -296,111 +294,3 @@ async def test_game_status_survives_map_and_voice_failures():
     result = await QueryCoordinator(query, maps, voice).server(server, group)
     assert result.online and result.server_name == "真名" and result.player_count == 7
     assert result.map_name == "real_map" and result.voice_count is None and result.voice_error
-
-
-async def test_steam_collection_without_type_and_with_file_url_is_not_misclassified(
-    local_server, http_session
-):
-    batches = []
-
-    async def details(request):
-        form = await request.post()
-        ids = [form[f"publishedfileids[{i}]"] for i in range(int(form["itemcount"]))]
-        batches.append(ids)
-        return web.json_response(
-            {
-                "response": {
-                    "publishedfiledetails": [
-                        {
-                            "publishedfileid": i,
-                            "result": 1 if i != "3" else 9,
-                            "title": f"title-{i}",
-                            "file_url": "https://cdn.example.test/item.vpk",
-                            "file_size": "1024",
-                        }
-                        for i in ids
-                    ]
-                }
-            }
-        )
-
-    async def collection(request):
-        return web.json_response(
-            {
-                "response": {
-                    "collectiondetails": [
-                        {
-                            "publishedfileid": "100",
-                            "result": 1,
-                            "children": [{"publishedfileid": str(i)} for i in range(1, 5)],
-                        }
-                    ]
-                }
-            }
-        )
-
-    server = web.Application()
-    server.router.add_post("/ISteamRemoteStorage/GetPublishedFileDetails/v1/", details)
-    server.router.add_post("/ISteamRemoteStorage/GetCollectionDetails/v1/", collection)
-    base = await local_server(server)
-    client = WorkshopClient(ExternalHTTP(http_session), steam_api_base=base, max_items=3)
-    try:
-        result = await client.query("100")
-        assert not result.error and result.collection and result.total_count == 4
-        assert batches == [["100"], ["1", "2", "3"]]
-        assert len(result.items) == 3 and not result.items[2].available
-        card = workshop_card(result, page=2)
-        assert card.title == "title-2" and len(card.links) == 2
-        assert "工坊 100 3" in card.footer
-        assert "私有" in workshop_card(result, page=3).sections[0].lines[-1]
-        with pytest.raises(ValueError, match="3 页"):
-            workshop_card(result, page=4)
-    finally:
-        await client.close()
-
-
-async def test_upstream_workshop_json_api_and_no_download_url(local_server, http_session):
-    async def details(request):
-        assert await request.json() == [42]
-        return web.json_response(
-            [{"publishedfileid": "42", "result": 1, "title": "地图", "file_size": 0}]
-        )
-
-    server = web.Application()
-    server.router.add_post("/details", details)
-    base = await local_server(server)
-    client = WorkshopClient(ExternalHTTP(http_session), api_url=base + "/details")
-    try:
-        result = await client.query("42")
-        assert not result.error and result.items[0].size_bytes == 0
-        card = workshop_card(result)
-        assert len(card.links) == 1
-        assert any("未提供直接下载" in line for line in card.sections[0].lines)
-    finally:
-        await client.close()
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        "工坊 42 2",
-        "https://steamcommunity.com/sharedfiles/filedetails/?id=42",
-        "看看 https://steamcommunity.com/workshop/filedetails/42",
-    ],
-)
-def test_workshop_commands(content):
-    command = parse_command(content)
-    assert command.kind == CommandKind.WORKSHOP and command.argument == "42"
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        "https://evil.test/sharedfiles/filedetails/?id=42",
-        "https://steamcommunity.com.evil.test/sharedfiles/filedetails/?id=42",
-        "https://user:pass@steamcommunity.com/sharedfiles/filedetails/?id=42",
-        "https://steamcommunity.com/sharedfiles/filedetails/?id=42&id=43",
-    ],
-)
-def test_workshop_does_not_follow_untrusted_or_ambiguous_urls(content):
-    assert parse_command(content) is None

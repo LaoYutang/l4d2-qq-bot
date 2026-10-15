@@ -11,13 +11,12 @@ from urllib.parse import quote
 
 from .cards.markdown import markdown_card, markdown_text_pages
 from .cards.renderer import CardRenderer
-from .cards.views import clean_text, overview_card, server_card, voice_card, workshop_card
+from .cards.views import clean_text, overview_card, server_card, voice_card
 from .commands import Command, CommandKind, match_server, parse_command
 from .config import AppConfig, GroupConfig, ServerConfig, Settings
 from .domain import Card, CardLink, CardSection, VoiceStatus
 from .integrations.heybox import HeyboxVoiceClient
 from .integrations.maps import MapNameClient
-from .integrations.workshop import WorkshopClient
 from .qq.client import QQAPIError, QQClient, QQTransportError
 from .qq.discovery import DiscoveryRecorder
 from .qq.protocol import GroupMessage
@@ -87,12 +86,11 @@ class ApplicationResources:
     queries: QueryCoordinator
     maps: MapNameClient | None
     voice: HeyboxVoiceClient | None
-    workshop: WorkshopClient | None
     users: int = 0
     retired: bool = False
 
     async def close(self) -> None:
-        for client in (self.maps, self.voice, self.workshop):
+        for client in (self.maps, self.voice):
             if client is not None:
                 await client.close()
 
@@ -109,7 +107,6 @@ class BotApplication:
         query_service: QueryService | None = None,
         maps: MapNameClient | None = None,
         voice: HeyboxVoiceClient | None = None,
-        workshop: WorkshopClient | None = None,
         management: ManagementService | None = None,
     ):
         self.client, self.config, self.settings = client, config, settings
@@ -117,10 +114,10 @@ class BotApplication:
         self.query_service = query_service or QueryService(
             config.query.timeout_seconds, config.query.concurrency
         )
-        self.maps, self.voice, self.workshop = maps, voice, workshop
+        self.maps, self.voice = maps, voice
         self.queries = QueryCoordinator(self.query_service, maps, voice)
         self._resources = ApplicationResources(
-            config, self.query_service, self.queries, maps, voice, workshop
+            config, self.query_service, self.queries, maps, voice
         )
         self.management = management
         self._cleanup: set[asyncio.Task] = set()
@@ -198,15 +195,14 @@ class BotApplication:
         *,
         maps: MapNameClient,
         voice: HeyboxVoiceClient,
-        workshop: WorkshopClient,
     ) -> None:
         previous = self._resources
         previous.retired = True
-        self.config, self.maps, self.voice, self.workshop = config, maps, voice, workshop
+        self.config, self.maps, self.voice = config, maps, voice
         self.query_service = QueryService(config.query.timeout_seconds, config.query.concurrency)
         self.queries = QueryCoordinator(self.query_service, maps, voice)
         self._resources = ApplicationResources(
-            config, self.query_service, self.queries, maps, voice, workshop
+            config, self.query_service, self.queries, maps, voice
         )
         if self.management:
             self.management.cancel_all()
@@ -426,7 +422,6 @@ class BotApplication:
                                 "服务器列表 / 服务器列表 2",
                                 "connect IP:端口",
                                 "语音1服",
-                                "Steam 工坊链接 / 工坊 ID 页码",
                                 "帮助",
                             ),
                         ),
@@ -441,7 +436,6 @@ class BotApplication:
                             "语音 服务器名",
                             "设置 服务器名 指令",
                             "重启 服务器名",
-                            "Steam 工坊链接",
                             "QQ 闪传链接",
                             "获取群ID",
                             "获取用户ID",
@@ -464,18 +458,6 @@ class BotApplication:
                 voice_card(status),
                 plain_text=status.count in (None, 0),
             )
-            return
-        if command.kind == CommandKind.WORKSHOP:
-            if resources.workshop is None:
-                await reply.text("工坊查询客户端未启用，请检查运行配置。")
-                return
-            result = await resources.workshop.query(command.argument)
-            try:
-                card = workshop_card(result, page=command.page)
-            except ValueError as exc:
-                await reply.text(str(exc))
-                return
-            await self._card(reply, card, plain_text=bool(result.error) or not result.items)
             return
         if command.kind == CommandKind.OVERVIEW:
             if not group.servers:

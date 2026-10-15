@@ -40,26 +40,6 @@ class VoiceStatus:
 
 
 @dataclass(frozen=True, slots=True)
-class WorkshopItem:
-    item_id: str
-    title: str = ""
-    filename: str = ""
-    size_bytes: int | None = None
-    download_url: str = ""
-    available: bool = True
-
-
-@dataclass(frozen=True, slots=True)
-class WorkshopResult:
-    item_id: str
-    title: str = ""
-    collection: bool = False
-    total_count: int = 0
-    items: tuple[WorkshopItem, ...] = ()
-    error: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class CardLink:
     label: str
     url: str

@@ -151,6 +151,13 @@ def test_example_config():
     assert len(config.groups[0].servers) == 2
 
 
+def test_removed_integration_settings_are_absent_from_schema_and_unknown_keys_still_fail():
+    schema = AppConfig.model_json_schema()["$defs"]["IntegrationConfig"]["properties"]
+    assert set(schema) == {"timeout_seconds", "concurrency"}
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate({"integrations": {"unexpected_field": True}})
+
+
 def test_empty_font_environment_and_secret_repr(monkeypatch):
     monkeypatch.setenv("L4D2_CARD_FONT_PATH", "")
     monkeypatch.setenv("L4D2_CLIENT_SECRET", "not-a-real-secret")
