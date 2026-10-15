@@ -212,8 +212,10 @@ function renderStats() {
   elements.groupCount.textContent = String(groups.length);
   elements.serverCount.textContent = String(servers);
   elements.safe_modeState.textContent = state.safe_mode ? "开启" : "关闭";
-  const switchText = elements.safe_mode.closest(".switch")?.querySelector(".switch-text");
-  if (switchText) switchText.textContent = state.safe_mode ? "开启" : "关闭";
+  for (const input of document.querySelectorAll('.switch input[type="checkbox"]')) {
+    const switchText = input.closest(".switch")?.querySelector(".switch-text");
+    if (switchText) switchText.textContent = input.checked ? "开启" : "关闭";
+  }
 }
 
 function showAlert(messages) {
