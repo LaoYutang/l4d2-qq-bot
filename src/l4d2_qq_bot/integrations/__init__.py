@@ -1,1 +1,1 @@
-"""Real map, Heybox voice and Steam Workshop query integrations."""
+"""Map names, Heybox voice, panel and Source RCON integrations."""

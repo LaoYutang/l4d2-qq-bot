@@ -3,11 +3,9 @@
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from urllib.parse import parse_qs, urlsplit
 
 from .address import normalize_name, parse_address
 from .config import ServerConfig
-from .integrations.workshop import item_id
 
 
 class CommandKind(StrEnum):
@@ -17,7 +15,6 @@ class CommandKind(StrEnum):
     ADDRESSES = "addresses"
     CONNECT = "connect"
     VOICE = "voice"
-    WORKSHOP = "workshop"
     GROUP_ID = "group_id"
     USER_ID = "user_id"
     RCON = "rcon"
@@ -58,14 +55,6 @@ def parse_command(content: str) -> Command | None:
         if not argument:
             raise ValueError("请输入服务器快捷名，例如：语音1服")
         return Command(CommandKind.VOICE, argument)
-    if match := re.fullmatch(r"工坊\s+(\S+)(?:\s+([0-9]{1,3}))?", content):
-        identifier = workshop_id_from_url(match[1]) if "://" in match[1] else item_id(match[1])
-        if not identifier:
-            raise ValueError("请输入有效的 Steam 工坊链接或条目 ID")
-        page = int(match[2]) if match[2] else 0
-        if match[2] and page < 1:
-            raise ValueError("页码从 1 开始")
-        return Command(CommandKind.WORKSHOP, identifier, page)
     if match := re.fullmatch(r"(?:服务器列表|服务器地址|连接指令)(?:\s+([0-9]{1,3}))?", content):
         page = int(match[1]) if match[1] else 0
         if match[1] and page < 1:
@@ -78,32 +67,7 @@ def parse_command(content: str) -> Command | None:
         return Command(CommandKind.QUERY, argument)
     if match := re.fullmatch(r"connect\s+(.+)", content, flags=re.IGNORECASE):
         return Command(CommandKind.CONNECT, parse_address(match[1]).address)
-    for match in re.finditer(r"https?://[^\s<>]+", content):
-        identifier = workshop_id_from_url(match[0].rstrip("。，；,;"))
-        if identifier:
-            return Command(CommandKind.WORKSHOP, identifier, page=0)
     return None
-
-
-def workshop_id_from_url(value: str) -> str:
-    try:
-        parsed = urlsplit(value)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or parsed.hostname not in {"steamcommunity.com", "www.steamcommunity.com"}
-            or parsed.username is not None
-            or parsed.password is not None
-        ):
-            return ""
-        path = parsed.path.rstrip("/")
-        if path in {"/sharedfiles/filedetails", "/workshop/filedetails"}:
-            values = parse_qs(parsed.query).get("id", [])
-            return item_id(values[0]) if len(values) == 1 else ""
-        if match := re.fullmatch(r"/(?:sharedfiles|workshop)/filedetails/([0-9]+)", path):
-            return item_id(match[1])
-    except ValueError:
-        return ""
-    return ""
 
 
 def match_server(servers: list[ServerConfig], name: str) -> ServerConfig | None:

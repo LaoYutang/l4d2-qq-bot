@@ -6,11 +6,11 @@ import pytest
 from aiohttp import web
 
 from l4d2_qq_bot.app import BotApplication, route_event
-from l4d2_qq_bot.cards.views import overview_card, server_card, voice_card, workshop_card
+from l4d2_qq_bot.cards.views import overview_card, server_card, voice_card
 from l4d2_qq_bot.commands import CommandKind, parse_command
 from l4d2_qq_bot.config import AppConfig, GroupConfig, ServerConfig, Settings
 from l4d2_qq_bot.demo import sample_event, sample_statuses
-from l4d2_qq_bot.domain import Player, VoiceStatus, WorkshopItem, WorkshopResult
+from l4d2_qq_bot.domain import Player, VoiceStatus
 from l4d2_qq_bot.integrations.http import ExternalHTTP
 from l4d2_qq_bot.integrations.maps import MapNameClient
 from l4d2_qq_bot.services.queries import QueryCoordinator
@@ -66,22 +66,6 @@ def test_upstream_reply_contract_has_no_product_explanations():
     assert overview.endswith("[对抗服] 离线或无法连接")
     assert voice_card(VoiceStatus("1服", True, count=0, names=())).content == (
         "1服 语音频道当前无人在线。"
-    )
-    workshop = workshop_card(
-        WorkshopResult(
-            "42",
-            collection=True,
-            total_count=2,
-            items=(
-                WorkshopItem("1", "甲", "a.vpk", 10, "https://files.example/a"),
-                WorkshopItem("2", "乙", "b.vpk", 20, "https://files.example/b"),
-            ),
-        )
-    ).content
-    assert workshop == (
-        "=== 创意工坊合集解析 ===\n标题: 甲\n文件: a.vpk (10)\n下载: https://files.example/a\n"
-        "--------------------\n标题: 乙\n文件: b.vpk (20)\n下载: https://files.example/b\n"
-        "--------------------"
     )
 
 

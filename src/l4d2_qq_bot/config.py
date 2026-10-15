@@ -134,13 +134,14 @@ class QueryConfig(ConfigModel):
 class IntegrationConfig(ConfigModel):
     timeout_seconds: float = Field(default=5.0, ge=0.1, le=30)
     concurrency: int = Field(default=4, ge=1, le=16)
-    workshop_api_url: str = ""
-    workshop_max_items: int = Field(default=20, ge=1, le=100)
 
-    @field_validator("workshop_api_url")
+    @model_validator(mode="before")
     @classmethod
-    def valid_api_url(cls, value: str) -> str:
-        return base_url(value)
+    def discard_removed_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            removed = {"workshop_api_url", "workshop_max_items"}
+            return {key: item for key, item in value.items() if key not in removed}
+        return value
 
 
 class AppConfig(ConfigModel):

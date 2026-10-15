@@ -7,10 +7,10 @@ import pytest
 
 from l4d2_qq_bot.app import BotApplication
 from l4d2_qq_bot.cards.markdown import markdown_card, markdown_text_pages
-from l4d2_qq_bot.cards.views import overview_card, server_card, voice_card, workshop_card
+from l4d2_qq_bot.cards.views import overview_card, server_card, voice_card
 from l4d2_qq_bot.config import ServerConfig, Settings
 from l4d2_qq_bot.demo import sample_config, sample_event, sample_statuses
-from l4d2_qq_bot.domain import VoiceStatus, WorkshopItem, WorkshopResult
+from l4d2_qq_bot.domain import VoiceStatus
 from l4d2_qq_bot.qq.client import QQAPIError, QQTransportError
 from l4d2_qq_bot.qq.protocol import GroupMessage
 from l4d2_qq_bot.qq.replies import ReplySession, split_text
@@ -40,14 +40,6 @@ def visible_lines(content):
         voice_card(VoiceStatus("1服", True, count=2, names=("甲", "Alice"))),
         voice_card(VoiceStatus("1服", True, count=0, names=())),
         voice_card(VoiceStatus("1服", True, error="语音查询失败。")),
-        workshop_card(
-            WorkshopResult(
-                "42",
-                items=(
-                    WorkshopItem("42", "地图(测试)", "map.vpk", 100, "https://files.example/a"),
-                ),
-            )
-        ),
     ],
 )
 def test_native_layout_keeps_the_existing_visible_body(card):
@@ -68,12 +60,10 @@ def test_native_layout_keeps_the_existing_visible_body(card):
         ("综合查询", "L4D2 服务器概览", 2),
         ("服务器列表", "服务器列表", 2),
         ("语音1服", "合作服 语音频道当前无人在线。", 0),
-        ("工坊 42", "=== 创意工坊单品解析 ===", 2),
         ("获取群ID", "DEMO_GROUP_OPENID", 0),
         ("获取用户ID", "DEMO_MEMBER_OPENID", 0),
         ("查询", "请输入服务器名称，例如：查询 主服务器", 0),
         ("服务器列表 2", "页码超出范围，当前共 1 页。", 0),
-        ("工坊 42 2", "当前可查看 1 页，请发送 工坊 42 页码。", 0),
     ],
 )
 async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
@@ -85,8 +75,6 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
     voice = AsyncMock()
     voice.configured = Mock(return_value=False)
     voice.query.return_value = VoiceStatus("合作服", True, count=0, names=())
-    workshop = AsyncMock()
-    workshop.query.return_value = WorkshopResult("42", items=(WorkshopItem("42", "测试地图"),))
     app = BotApplication(
         client,
         sample_config(),
@@ -95,7 +83,6 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
         Mock(),
         query_service=query,
         voice=voice,
-        workshop=workshop,
     )
     message = replace(GroupMessage.from_payload(sample_event()), content=command)
     try:
@@ -112,6 +99,8 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
             assert "markdown" not in payload
             lines = payload["content"].splitlines()
         assert any(expected in line for line in lines)
+        if command == "帮助":
+            assert "工坊" not in payload["markdown"]["content"]
         client.upload_png.assert_not_awaited()
     finally:
         await app.close()

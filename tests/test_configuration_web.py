@@ -90,6 +90,37 @@ async def test_save_validates_conflicts_and_applies_without_restart(
     assert len(applied) == 2  # Initial snapshot and one successful write.
 
 
+async def test_removed_workshop_settings_are_dropped_on_read_and_save(
+    local_server, http_session, tmp_path
+):
+    path = tmp_path / "config.json"
+    data = sample_config().model_dump()
+    data["integrations"].update(
+        timeout_seconds=7.0,
+        concurrency=2,
+        workshop_api_url="https://obsolete.example/api",
+        workshop_max_items=20,
+    )
+    path.write_text(json.dumps(data), encoding="utf-8")
+    base = await local_server(
+        create_web_app(Settings(_env_file=None, web_password=PASSWORD), ConfigStore(path))
+    )
+    async with http_session.get(base + "/api/config", headers=HEADERS) as response:
+        assert response.status == 200
+        result = await response.json()
+    expected = {"timeout_seconds": 7.0, "concurrency": 2}
+    assert result["config"]["integrations"] == expected
+    assert load_config(path).integrations.model_dump() == expected
+    async with http_session.post(
+        base + "/api/config", headers=HEADERS, json={"config": data, "revision": result["revision"]}
+    ) as response:
+        assert response.status == 200
+        saved = await response.json()
+    assert saved["config"]["integrations"] == expected
+    assert json.loads(path.read_text(encoding="utf-8"))["integrations"] == expected
+    assert saved["config"]["groups"] == data["groups"]
+
+
 async def test_inflight_queries_keep_their_configuration_and_new_queries_use_the_save():
     config = sample_config()
     config.connect_base_url = "https://old.example"
@@ -119,7 +150,7 @@ async def test_inflight_queries_keep_their_configuration_and_new_queries_use_the
     await entered.wait()
     updated = config.model_copy(deep=True)
     updated.connect_base_url = "https://new.example"
-    app.reconfigure(updated, maps=new_maps, voice=AsyncMock(), workshop=AsyncMock())
+    app.reconfigure(updated, maps=new_maps, voice=AsyncMock())
     old_maps.close.assert_not_awaited()
     release.set()
     await task

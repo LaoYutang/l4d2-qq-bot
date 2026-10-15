@@ -20,7 +20,7 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 - `app.py`：事件过滤、去重、队列、配置快照、指令编排和回复。
 - `services/query.py`：DNS 固定、私网策略、异步 A2S INFO / PLAYER。
 - `services/queries.py`：单服、总览、临时地址和 CLI 共用地图 / 语音编排。
-- `integrations/`：地图、黑盒、工坊、面板与 Source RCON。
+- `integrations/`：地图、黑盒、面板与 Source RCON。
 - `services/management.py`：管理员权限、RCON 直接执行、重启确认与闪传会话、去重后的操作及审计。
 - `cards/`：领域结果转原版正文；Markdown / PNG 均使用相同正文和脱敏。原生排版只修饰现有正文，保留标题、字段、分区和原有文字；在转义前按渲染字节预算分页，避免截断转义符或样式。
 - `qq/`：Token、OpenAPI、WS 状态机、被动回复序号、平台拒绝回退。
@@ -52,7 +52,7 @@ QQ AppID / AppSecret 不进入 AppConfig、磁盘业务配置或 Web API。黑�
 
 每群通过 admin_openids 配置管理员权限，admin_remarks 按成员 OpenID 保存可选备注，最多 80 个字符。备注仅保留管理员列表内的非空项，旧配置缺少该字段时默认为空。配置页逐行编辑 ID 对应的备注，删除管理员时同步清理备注；权限判断仍使用 admin_openids。
 
-运行时替换 ApplicationResources。每条命令持有自己的配置 / 客户端快照，在途查询完成后再关闭旧缓存；新命令立即使用新配置。地图 API、黑盒凭据或工坊地址改变后创建新客户端，缓存不会跨接口混用。配置变化清除待确认管理会话。
+运行时替换 ApplicationResources。每条命令持有自己的配置 / 客户端快照，在途查询完成后再关闭旧缓存；新命令立即使用新配置。地图 API 或黑盒凭据改变后创建新客户端，缓存不会跨接口混用。配置变化清除待确认管理会话。
 
 ## 查询与外部 API
 
@@ -63,8 +63,6 @@ A2S 区分 INFO 失败、PLAYER 失败和真正空名单。players=None 为未�
 地图统一使用 `GET {map_name_url}/{map_code}`，2 秒超时，UTF-8 文本，成功缓存 3600 秒；失败不缓存并返回原代码。同客户端服务所有群、单服、总览和临时 connect；CLI 也使用相同 QueryCoordinator / MapNameClient。
 
 黑盒沿用上游频道、房间 API 和 token 请求头。频道人数实时查询；昵称缓存 600 秒、每页 100、最多 20 页。语音昵称不参与 safe_mode 脱敏，Markdown 与 PNG 均显示原名，仅清理控制字符和限制长度；safe_mode 只作用于游戏玩家名。成功响应的 result 对象中 user_ids 缺失或为 null 时，按上游空频道语义处理；错误状态、非对象 result 和其他非法名单类型仍报错，不伪装成零人。昵称失败仍保留真实人数。
-
-工坊默认 GetPublishedFileDetails / GetCollectionDetails，用合集接口确认类型。也支持原版 `workshop_api_url` POST 数字 ID 数组；children 合集保序，兼容解析 API 的可下载父项保留。默认最多 20 项，原版正文聚合展示；显式页码展示单项。缺下载 URL 保留元信息，不猜测链接。
 
 面板沿用 `POST /download/link/parse`（JSON url）与 `POST /download/add`（表单 url / filename / referer），使用该服 `Authorization: Bearer {token}`。解析与添加分别 60 / 30 秒，无自动重试。只接受面板标记支持且扩展名为 .vpk/.zip/.rar/.7z 的文件，文件名去路径、清理控制字符。
 
@@ -86,4 +84,3 @@ RCON / 重启要求本群 admin_openids 与完整精确服务器名 / 别名。�
 - [QQ 群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
 - [QQ Markdown 格式与自定义正文](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
 - [QQ Markdown / 按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)
-- [Steam 工坊接口](https://partner.steamgames.com/doc/webapi/ISteamRemoteStorage)

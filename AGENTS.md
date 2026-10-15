@@ -22,7 +22,7 @@
 - `domain.py`：与 QQ / AstrBot 无关的数据模型。
 - `commands.py`：纯命令解析与服务器匹配。
 - `services/`：A2S 查询、并发控制、业务编排。
-- `integrations/`：地图名称、黑盒语音、创意工坊等外部 API。
+- `integrations/`：地图名称、黑盒语音、面板与 Source RCON。
 - `qq/`：访问凭证、REST、WebSocket 状态机；不放 L4D2 业务逻辑。
 - `cards/`：统一卡片视图、原生 Markdown 和 PNG 渲染；不访问网络。
 - `app.py`：事件队列、去重和命令路由。
@@ -80,7 +80,7 @@ uv run pytest
 docker build -t l4d2-qq-bot:local .
 ```
 
-已提供 validate / preview / demo / query / discover / run。discover 仅监听并把 OpenID 写入本地忽略文件，不回复消息。run 始终使用真实查询，已移除 --demo-data；fixture 只在本地 demo / preview 和自动化测试使用。地图名称、黑盒语音与工坊必须调用真实接口，未配置 / 失败不可伪装成成功或零人数。修改网络协议、查询和权限时补充离线测试。简单文案变更无需机械添加测试。提交前执行相关检查；若环境不能运行 Docker 或真实 QQ 联调，明确说明，不把未运行的检查标成通过。
+已提供 validate / preview / demo / query / discover / run。discover 仅监听并把 OpenID 写入本地忽略文件，不回复消息。run 始终使用真实查询，已移除 --demo-data；fixture 只在本地 demo / preview 和自动化测试使用。地图名称、黑盒语音必须调用真实接口，未配置 / 失败不可伪装成成功或零人数。修改网络协议、查询和权限时补充离线测试。简单文案变更无需机械添加测试。提交前执行相关检查；若环境不能运行 Docker 或真实 QQ 联调，明确说明，不把未运行的检查标成通过。
 
 ## 发布规则
 

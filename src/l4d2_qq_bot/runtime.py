@@ -15,7 +15,6 @@ from .config_store import ConfigStore
 from .integrations.heybox import HeyboxVoiceClient
 from .integrations.http import ExternalHTTP
 from .integrations.maps import MapNameClient
-from .integrations.workshop import WorkshopClient
 from .qq.client import QQClient
 from .qq.discovery import DiscoveryRecorder
 from .qq.gateway import QQGateway
@@ -38,11 +37,6 @@ def integrations(session: aiohttp.ClientSession, config: AppConfig, settings: Se
             http,
             config.heybox_bot_id or settings.heybox_bot_id,
             config.heybox_token or settings.heybox_token.get_secret_value(),
-        ),
-        "workshop": WorkshopClient(
-            http,
-            api_url=config.integrations.workshop_api_url,
-            max_items=config.integrations.workshop_max_items,
         ),
     }
 
