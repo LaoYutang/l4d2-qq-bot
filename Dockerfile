@@ -9,7 +9,7 @@ ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
-RUN if [ "$VERSION" != "dev" ]; then uv version "${VERSION#v}" --no-sync --offline; fi \
+RUN if [ "$VERSION" != "dev" ]; then uv version "${VERSION#v}" --no-sync; fi \
     && uv sync --frozen --no-dev --no-editable --no-cache
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime

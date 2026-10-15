@@ -51,7 +51,10 @@ jobs:
           load: true
           push: false
           tags: l4d2-qq-bot:ci
+          build-args: VERSION=v0.0.0
           cache-from: type=gha,scope=ci
           cache-to: type=gha,mode=max,scope=ci
+      - name: Verify built version
+        run: test "$(docker run --rm l4d2-qq-bot:ci --version)" = "0.0.0"
       - run: docker run --rm l4d2-qq-bot:ci validate --config config.example.json
       - run: docker run --rm l4d2-qq-bot:ci demo --output /tmp/l4d2-demo
