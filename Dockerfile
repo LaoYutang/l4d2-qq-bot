@@ -1,16 +1,19 @@
 # syntax=docker/dockerfile:1
 ARG PYTHON_VERSION=3.12
+ARG VERSION=dev
 FROM ghcr.io/astral-sh/uv:0.11.7 AS uv
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
+ARG VERSION
 COPY --from=uv /uv /uvx /usr/local/bin/
 ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
-RUN uv sync --frozen --no-dev --no-editable --no-cache
+RUN if [ "$VERSION" != "dev" ]; then uv version "${VERSION#v}" --no-sync --offline; fi \
+    && uv sync --frozen --no-dev --no-editable --no-cache
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
-ARG VERSION=0.1.0
+ARG VERSION
 LABEL org.opencontainers.image.title="l4d2-qq-bot" \
       org.opencontainers.image.description="L4D2 queries and image cards via official QQ WebSocket" \
       org.opencontainers.image.version="${VERSION}" \

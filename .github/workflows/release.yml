@@ -70,26 +70,18 @@ jobs:
           version: "0.11.7"
           python-version: "3.12"
           enable-cache: true
-      - run: uv sync --frozen --group dev
-      - name: Validate semantic tag and package version
+      - name: Validate release tag
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          uv run --frozen python - <<'PY'
+          uv run --no-project python - <<'PY'
           import os
           import re
-          import tomllib
-          from pathlib import Path
-          from packaging.version import Version
-          from l4d2_qq_bot import __version__
 
           tag = os.environ["RELEASE_TAG"]
           pattern = r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta|rc)\.(0|[1-9]\d*))?"
           if not re.fullmatch(pattern, tag):
-              raise SystemExit("Use v1.2.3 or v1.2.3-rc.1 format")
-          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
-          if Version(tag[1:]) != Version(project["version"]) or Version(tag[1:]) != Version(__version__):
-              raise SystemExit("Tag, pyproject.toml and package versions must match")
+              raise SystemExit("发布 tag 格式无效，请使用 v1.2.3 或 v1.2.3-rc.1")
           PY
 
   publish:
