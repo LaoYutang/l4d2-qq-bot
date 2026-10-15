@@ -224,8 +224,7 @@ h3 {
 
 .button,
 .icon-button,
-.secret-toggle,
-.chip-remove {
+.secret-toggle {
   border: 0;
   cursor: pointer;
   transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
@@ -701,37 +700,48 @@ input[aria-invalid="true"] {
 
 .tag-input-row input {
   flex: 1;
+  min-width: 0;
 }
 
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+.admin-list {
+  display: grid;
+  gap: 10px;
   margin-top: 10px;
 }
 
-.tag-chip {
-  display: inline-flex;
-  align-items: center;
+.admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.admin-identity,
+.admin-remark {
+  min-width: 0;
+}
+
+.admin-identity {
+  display: grid;
   gap: 6px;
-  padding: 6px 8px 6px 10px;
-  border-radius: 999px;
+}
+
+.admin-openid {
+  display: flex;
+  align-items: center;
+  min-height: 43px;
+  padding: 8px 12px;
+  border-radius: 10px;
   color: var(--accent-strong);
   background: var(--accent-soft);
   font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
-.chip-remove {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 50%;
-  color: inherit;
-  background: rgba(0, 0, 0, 0.07);
+.admin-remove {
+  min-height: 43px;
 }
 
 .servers-block {
@@ -1070,6 +1080,14 @@ footer {
   .field-wide,
   .admin-editor {
     grid-column: auto;
+  }
+
+  .admin-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .admin-identity {
+    grid-column: 1 / -1;
   }
 
   .panel-heading,

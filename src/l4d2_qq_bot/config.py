@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -77,6 +77,7 @@ class GroupConfig(ConfigModel):
     group_openid: str = Field(min_length=1, max_length=128)
     name: str = Field(default="", max_length=80)
     admin_openids: list[str] = Field(default_factory=list)
+    admin_remarks: dict[str, Annotated[str, Field(max_length=80)]] = Field(default_factory=dict)
     hh_room_id: str = ""
     servers: list[ServerConfig] = Field(default_factory=list, max_length=32)
 
@@ -92,6 +93,11 @@ class GroupConfig(ConfigModel):
             raise ValueError("管理员 OpenID 不能为空")
         if len(self.admin_openids) != len(set(self.admin_openids)):
             raise ValueError("管理员 OpenID 不能重复")
+        self.admin_remarks = {
+            member: remark
+            for member, remark in self.admin_remarks.items()
+            if member in self.admin_openids and remark
+        }
         return self
 
 

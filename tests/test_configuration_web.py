@@ -57,6 +57,8 @@ async def test_save_validates_conflicts_and_applies_without_restart(
     config, revision = await store.read()
     data = sample_config().model_dump()
     data["heybox_token"] = "fixture-heybox-token"
+    data["groups"][0]["admin_openids"] = ["fixture-admin"]
+    data["groups"][0]["admin_remarks"] = {"fixture-admin": "群主"}
     data["groups"][0]["servers"][0]["rcon_password"] = "fixture-rcon-password"
     async with http_session.post(
         base + "/api/config", headers=HEADERS, json={"config": data, "revision": revision}
@@ -64,6 +66,8 @@ async def test_save_validates_conflicts_and_applies_without_restart(
         result = await response.json()
         assert response.status == 200 and result["saved"]
     assert applied[-1].heybox_token == "fixture-heybox-token"
+    assert result["config"]["groups"][0]["admin_remarks"] == {"fixture-admin": "群主"}
+    assert load_config(path).groups[0].admin_remarks == {"fixture-admin": "群主"}
     assert load_config(path).groups[0].servers[0].rcon_password == "fixture-rcon-password"
     assert path.stat().st_mode & 0o777 == 0o600
     raw = path.read_bytes()

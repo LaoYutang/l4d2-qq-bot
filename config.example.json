@@ -20,6 +20,7 @@
       "group_openid": "REPLACE_WITH_GROUP_OPENID",
       "name": "示例群",
       "admin_openids": [],
+      "admin_remarks": {},
       "hh_room_id": "",
       "servers": [
         {

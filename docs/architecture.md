@@ -48,6 +48,8 @@ QQ AppID / AppSecret 不进入 AppConfig、磁盘业务配置或 Web API。黑�
 
 保存先完成 Pydantic 校验，再检查文件 revision；冲突返回 409。临时文件以 0600 创建，在同目录原子替换，Docker 必须挂载可写目录，不能使用只读的单文件 bind mount。
 
+每群通过 admin_openids 配置管理员权限，admin_remarks 按成员 OpenID 保存可选备注，最多 80 个字符。备注仅保留管理员列表内的非空项，旧配置缺少该字段时默认为空。配置页逐行编辑 ID 对应的备注，删除管理员时同步清理备注；权限判断仍使用 admin_openids。
+
 运行时替换 ApplicationResources。每条命令持有自己的配置 / 客户端快照，在途查询完成后再关闭旧缓存；新命令立即使用新配置。地图 API、黑盒凭据或工坊地址改变后创建新客户端，缓存不会跨接口混用。配置变化清除待确认管理会话。
 
 ## 查询与外部 API
