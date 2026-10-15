@@ -42,7 +42,7 @@ jobs:
 
   docker-smoke:
     runs-on: ubuntu-24.04
-    needs: checks
+    needs: [checks, validate-tag]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,8 +54,10 @@ jobs:
           load: true
           push: false
           tags: l4d2-qq-bot:ci
+          build-args: VERSION=${{ github.ref_name }}
           cache-from: type=gha,scope=ci
           cache-to: type=gha,mode=max,scope=ci
+      - run: docker run --rm l4d2-qq-bot:ci --version
       - run: docker run --rm l4d2-qq-bot:ci validate --config config.example.json
       - run: docker run --rm l4d2-qq-bot:ci demo --output /tmp/l4d2-demo
 
