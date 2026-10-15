@@ -85,9 +85,9 @@ docker build -t l4d2-qq-bot:local .
 
 ## 发布规则
 
-- PR / 分支 CI 只做检查与构建验证；推送 `v*.*.*` tag 才发布镜像到 GHCR。
-- tag 工作流先通过 lint / tests，再构建 `linux/amd64` 和 `linux/arm64`；正式版本更新 `latest`，预发布版本不得覆盖 `latest`。
-- 使用仓库 `GITHUB_TOKEN` 与最小权限，不要求用户额外创建 Docker Hub 凭据。
+- PR / 分支 CI 只做检查与构建验证；推送 `v*.*.*` tag 才发布镜像到 Docker Hub 的 `laoyutang/l4d2-qq-bot`。
+- tag 工作流先通过 lint / tests，再构建 `linux/amd64` 和 `linux/arm64`；每次仅发布 `latest` 与去掉 `v` 前缀的完整版本号，预发布同样更新 `latest`。
+- Docker Hub 登录使用仓库 Secrets 中的 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_PASSWORD`；GitHub 权限保持最小，不需要 packages:write。
 - Docker 非 root 运行，中文字体和 CA 证书内置，凭据不写进镜像层。
 - 生成工作流不等于发布。只有用户要求发布时才创建 / 推送 tag；不要自动提交、推送或创建发布。
 - 行为或范围变化同步更新 README、配置示例和 roadmap；保持进度标记真实。

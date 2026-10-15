@@ -1,5 +1,11 @@
 # 本次验收示例
 
+## 2026-10-15 Docker Hub 发布目标与标签
+
+- tag 工作流目标改为 `docker.io/laoyutang/l4d2-qq-bot`，仅生成 `latest` 和去掉 `v` 前缀的完整版本号两个标签；预发布同样更新 `latest`。保留多架构构建、检查与版本一致性校验，以及分支 / PR 仅检查和构建的规则。
+- Docker Hub 登录按要求使用仓库 Secrets 的 `DOCKERHUB_USERNAME` / `DOCKERHUB_PASSWORD`，移除 GitHub packages 写权限；同步部署说明和镜像配置示例。
+- 两个工作流的 actionlint 静态检查与差异空白检查通过。本次仅修改工作流与文档，未重复运行应用测试；未执行 Docker 构建、上传镜像或创建 / 推送 Git tag，实际发布与 Docker Hub 仓库权限仍需运行 Actions 验证。
+
 ## 2026-10-15 配置页密码错误限流
 
 - 配置 API 按连接来源 IP 使用容量 5 次、每 60 秒恢复 1 次的令牌桶；错误或缺失密码扣额度，正确密码不扣也不重置。桶空时先拒绝鉴权，不再比较密码或读写配置，返回 429、`Retry-After` 和中文等待提示。
