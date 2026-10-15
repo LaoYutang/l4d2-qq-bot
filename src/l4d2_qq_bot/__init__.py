@@ -1,3 +1,5 @@
 """L4D2 queries for the official QQ bot platform."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+__version__ = version("l4d2-qq-bot")

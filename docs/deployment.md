@@ -47,7 +47,7 @@ docker rm l4d2-demo
 ## GitHub Actions
 
 - `.github/workflows/ci.yml`：分支与 PR 运行 Ruff、Python 3.12 / 3.13 / 3.14 测试、示例与包构建，然后进行 Docker 冒烟。
-- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发，独立执行同等的 Python 多版本检查与 Docker 冒烟。检查与 tag / 包版本一致性校验均通过后，发布 `linux/amd64`、`linux/arm64` 镜像到 Docker Hub 的 `laoyutang/l4d2-qq-bot`。
+- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发，独立执行同等的 Python 多版本检查与 Docker 冒烟。检查与 tag 格式校验通过后，发布 `linux/amd64`、`linux/arm64` 镜像到 Docker Hub 的 `laoyutang/l4d2-qq-bot`。
 - 在 GitHub 仓库 Settings → Secrets and variables → Actions → Secrets 中设置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_PASSWORD`，分别填写 Docker Hub 登录用户名和密码。账号须有目标仓库的推送权限；密码不写入 `.env`、业务配置或镜像层。工作流的 GitHub 权限仅保留 `contents: read`。
 - setup-uv 固定为已核实存在的 `v10.3.0`；uv 工具仍固定为 `0.11.7`。发布流程不依赖编辑器解析本地 reusable workflow，未绑定 GitHub 远端时也可以校验文件。
 - 镜像推送地址固定为 `docker.io/laoyutang/l4d2-qq-bot`；公开拉取需将 Docker Hub 仓库设为公开，私有仓库则须先登录有权限的账号。
@@ -62,7 +62,9 @@ docker pull laoyutang/l4d2-qq-bot:0.1.0
 
 使用现有 Compose 部署远端镜像时，设置 `L4D2_IMAGE=laoyutang/l4d2-qq-bot:0.1.0`，执行 `docker compose pull` 和 `docker compose up -d --no-build`。需要跟随每次发布时，将版本替换为 `latest`。
 
-发版前同步 `pyproject.toml` 与包 `__version__`，更新 uv.lock；预发布包版本可用 PEP 440 形式 `0.2.0rc1`，工作流与 `v0.2.0-rc.1` 归一化比较。先完成并提交检查，再由维护者显式推送 tag，例如：
+发布版本以 Git tag 为准，无需手动修改项目内的包版本。Docker 构建时自动把 tag 去掉 `v` 前缀，更新构建目录中的包元数据和锁文件；预发布自动转换为 Python 包版本格式，例如 `v0.2.0-rc.1` 对应 `0.2.0rc1`。程序的 `--version` 读取安装后的包版本，与发布镜像保持一致。工作区中的 `pyproject.toml` / `uv.lock` 仅保留本地打包所需的基础版本，不限制可发布的镜像版本。
+
+先提交代码，再由维护者在该提交上显式推送 tag，例如：
 
 ```bash
 git tag v0.1.0
@@ -70,3 +72,5 @@ git push origin v0.1.0
 ```
 
 这些命令是后续操作说明，本次初始化没有创建提交、tag 或发布。镜像内容依当前代码阶段决定，tag 不能替代 QQ 真实联调。
+
+已有 tag 仍指向创建时的提交，重新运行旧 Actions 不会自动使用分支上的修复。更新工作流后，需要从修复后的提交创建发布 tag；复用失败的旧 tag 时也必须先让它指向修复提交。
