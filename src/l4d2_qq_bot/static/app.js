@@ -85,6 +85,7 @@ function createEmptyGroup() {
     name: "",
     hh_room_id: "",
     admin_openids: [],
+    admin_remarks: {},
     servers: [createEmptyServer()],
   };
 }
@@ -131,6 +132,11 @@ function normalizeConfig(rawConfig) {
       admin_openids: Array.isArray(group.admin_openids)
         ? [...new Set(group.admin_openids.map(asText).filter(Boolean))]
         : [],
+      admin_remarks: isPlainObject(group.admin_remarks)
+        ? Object.fromEntries(
+            Object.entries(group.admin_remarks).map(([userId, remark]) => [userId, asText(remark)])
+          )
+        : {},
       servers: Array.isArray(group.servers)
         ? group.servers.filter(isPlainObject).map((server) => ({
             ...server,
@@ -539,12 +545,12 @@ function createGroupCard(group, groupIndex) {
         </label>
         <div class="admin-editor">
           <span class="field-label">管理员用户</span>
-          <span class="field-hint">在群中发送“获取用户ID”后复制结果；支持回车或逗号批量添加。</span>
+          <span class="field-hint">在群中发送“获取用户ID”后复制结果；支持回车或逗号批量添加。每个 ID 可单独填写备注，方便区分成员。</span>
           <div class="tag-input-row">
             <input class="admin-input" type="text" autocomplete="off" placeholder="输入成员 OpenID" />
             <button class="button button-secondary button-small add-admin" type="button">添加</button>
           </div>
-          <div class="tag-list" aria-label="管理员列表"></div>
+          <div class="admin-list" aria-label="管理员列表"></div>
         </div>
       </div>
       <div class="servers-block">
@@ -567,7 +573,7 @@ function createGroupCard(group, groupIndex) {
   const groupIdInput = details.querySelector('input[data-field="group_openid"]');
   const roomIdInput = details.querySelector('input[data-field="hh_room_id"]');
   const adminInput = details.querySelector(".admin-input");
-  const tagList = details.querySelector(".tag-list");
+  const adminList = details.querySelector(".admin-list");
   const serversList = details.querySelector(".servers-list");
 
   function updateGroupSummary() {
@@ -634,7 +640,7 @@ function createGroupCard(group, groupIndex) {
     if (values.length === 0) return;
     group.admin_openids = [...new Set([...group.admin_openids, ...values])];
     adminInput.value = "";
-    renderAdminTags(tagList, group, groupIndex);
+    renderAdmins(adminList, group, groupIndex);
     markDirty();
   }
 
@@ -647,7 +653,7 @@ function createGroupCard(group, groupIndex) {
     }
   });
 
-  renderAdminTags(tagList, group, groupIndex);
+  renderAdmins(adminList, group, groupIndex);
   if (group.servers.length === 0) {
     const empty = document.createElement("div");
     empty.className = "server-empty";
@@ -662,7 +668,7 @@ function createGroupCard(group, groupIndex) {
   return details;
 }
 
-function renderAdminTags(container, group, groupIndex) {
+function renderAdmins(container, group, groupIndex) {
   container.replaceChildren();
   if (group.admin_openids.length === 0) {
     const empty = document.createElement("span");
@@ -673,22 +679,54 @@ function renderAdminTags(container, group, groupIndex) {
   }
 
   group.admin_openids.forEach((userId, userIndex) => {
-    const chip = document.createElement("span");
-    chip.className = "tag-chip";
-    const label = document.createElement("span");
-    label.textContent = userId;
-    const removeButton = document.createElement("button");
-    removeButton.type = "button";
-    removeButton.className = "chip-remove";
-    removeButton.setAttribute("aria-label", `移除管理员 ${userId}`);
-    removeButton.textContent = "×";
-    removeButton.addEventListener("click", () => {
-      group.admin_openids.splice(userIndex, 1);
-      renderAdminTags(container, group, groupIndex);
+    const row = document.createElement("div");
+    row.className = "admin-row";
+    const identity = document.createElement("div");
+    identity.className = "admin-identity";
+    const idLabel = document.createElement("span");
+    idLabel.className = "field-label";
+    idLabel.textContent = "成员 OpenID";
+    const idValue = document.createElement("span");
+    idValue.className = "admin-openid";
+    idValue.textContent = userId;
+    identity.append(idLabel, idValue);
+
+    const remarkField = document.createElement("label");
+    remarkField.className = "field admin-remark";
+    const remarkLabel = document.createElement("span");
+    remarkLabel.className = "field-label";
+    remarkLabel.textContent = "备注（可选）";
+    const remarkInput = document.createElement("input");
+    remarkInput.type = "text";
+    remarkInput.autocomplete = "off";
+    remarkInput.maxLength = 80;
+    remarkInput.placeholder = "例如：群主、小王";
+    remarkInput.value = asText(group.admin_remarks[userId]);
+    remarkInput.dataset.path = `groups.${groupIndex}.admin_remarks.${userId}`;
+    remarkInput.setAttribute("aria-label", `管理员 ${userId} 的备注`);
+    remarkInput.addEventListener("input", () => {
+      if (remarkInput.value.trim()) {
+        group.admin_remarks = { ...group.admin_remarks, [userId]: remarkInput.value };
+      } else {
+        delete group.admin_remarks[userId];
+      }
       markDirty();
     });
-    chip.append(label, removeButton);
-    container.append(chip);
+    remarkField.append(remarkLabel, remarkInput);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "button button-danger button-small admin-remove";
+    removeButton.setAttribute("aria-label", `移除管理员 ${userId}`);
+    removeButton.textContent = "移除";
+    removeButton.addEventListener("click", () => {
+      group.admin_openids.splice(userIndex, 1);
+      delete group.admin_remarks[userId];
+      renderAdmins(container, group, groupIndex);
+      markDirty();
+    });
+    row.append(identity, remarkField, removeButton);
+    container.append(row);
   });
 }
 

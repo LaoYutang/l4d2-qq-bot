@@ -72,6 +72,26 @@ def test_bad_base_url_rejected():
         AppConfig.model_validate(data)
 
 
+def test_admin_remarks_are_optional_and_follow_member_ids():
+    data = sample_config().model_dump()
+    group = data["groups"][0]
+    group["admin_openids"] = ["fixture-admin", "fixture-other-admin"]
+    group.pop("admin_remarks", None)
+    assert AppConfig.model_validate(data).groups[0].admin_remarks == {}
+
+    group["admin_remarks"] = {
+        "fixture-admin": " 群主 ",
+        "fixture-other-admin": "",
+        "fixture-visitor": "只有备注的成员",
+    }
+    loaded = AppConfig.model_validate(data).groups[0]
+    assert loaded.admin_openids == ["fixture-admin", "fixture-other-admin"]
+    assert loaded.admin_remarks == {"fixture-admin": "群主"}
+
+    group["admin_openids"] = ["fixture-other-admin"]
+    assert AppConfig.model_validate(data).groups[0].admin_remarks == {}
+
+
 def test_removed_server_fields_do_not_resolve_environment_credentials(monkeypatch):
     monkeypatch.setenv("LEGACY_RCON", "fixture-env-rcon")
     monkeypatch.setenv("LEGACY_PANEL", "fixture-env-panel")
