@@ -2,6 +2,10 @@
 
 import hmac
 import json
+import math
+import time
+from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 
 from aiohttp import web
@@ -14,16 +18,82 @@ STATIC_PATH = Path(__file__).with_name("static")
 PASSWORD_HEADER = "X-Config-Password"
 
 
+@dataclass(slots=True)
+class PasswordBucket:
+    tokens: float
+    updated_at: float
+
+
+class PasswordAttemptLimiter:
+    """Per-peer failed-password buckets, bounded without evicting active limits."""
+
+    capacity = 5
+    refill_seconds = 60.0
+
+    def __init__(self, *, max_sources: int = 4096):
+        self.max_sources = max_sources
+        self._buckets: OrderedDict[str, PasswordBucket] = OrderedDict()
+
+    def retry_after(self, source: str) -> int:
+        return self._check(source, consume=False)
+
+    def consume(self, source: str) -> int:
+        """Consume a failed-attempt token, or return the rounded-up retry delay."""
+        return self._check(source, consume=True)
+
+    def _check(self, source: str, *, consume: bool) -> int:
+        now = time.monotonic()
+        full_refill_seconds = self.capacity * self.refill_seconds
+        # Last-consumed order allows bounded, amortized cleanup without a timer.
+        while self._buckets:
+            oldest = next(iter(self._buckets.values()))
+            if now - oldest.updated_at < full_refill_seconds:
+                break
+            self._buckets.popitem(last=False)
+
+        bucket = self._buckets.get(source)
+        if bucket is None:
+            if len(self._buckets) >= self.max_sources:
+                oldest = next(iter(self._buckets.values()))
+                return max(1, math.ceil(oldest.updated_at + full_refill_seconds - now))
+            bucket = PasswordBucket(self.capacity, now)
+        tokens = min(self.capacity, bucket.tokens + (now - bucket.updated_at) / self.refill_seconds)
+        if tokens < 1:
+            return max(1, math.ceil((1 - tokens) * self.refill_seconds))
+        if consume:
+            bucket.tokens, bucket.updated_at = tokens - 1, now
+            self._buckets[source] = bucket
+            self._buckets.move_to_end(source)
+        return 0
+
+
 def create_web_app(settings: Settings, store: ConfigStore) -> web.Application:
     password = settings.web_password.get_secret_value()
     if not password:
         raise ValueError("请设置 L4D2_WEB_PASSWORD 后启用配置界面")
+    encoded_password = password.encode("utf-8")
+    password_attempts = PasswordAttemptLimiter()
 
     @web.middleware
     async def protect(request: web.Request, handler):
-        if request.path.startswith("/api/") and not hmac.compare_digest(
-            request.headers.get(PASSWORD_HEADER, "").encode("utf-8"), password.encode("utf-8")
+        requires_password = request.path.startswith("/api/")
+        # Only trust the socket peer; forwarded headers are client-controlled.
+        source = request.remote or "unknown"
+        retry_after = password_attempts.retry_after(source) if requires_password else 0
+        if retry_after:
+            response = web.json_response(
+                {
+                    "error": f"密码错误尝试过多，请在 {retry_after} 秒后重试。",
+                    "retry_after": retry_after,
+                },
+                status=429,
+                headers={"Retry-After": str(retry_after)},
+            )
+        elif requires_password and not hmac.compare_digest(
+            request.headers.get(PASSWORD_HEADER, "").encode("utf-8"), encoded_password
         ):
+            # No await between checking and consuming, so concurrent requests share the limit.
+            password_attempts.consume(source)
             response = web.json_response({"error": "密码错误"}, status=401)
         else:
             try:

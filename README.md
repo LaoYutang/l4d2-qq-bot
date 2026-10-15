@@ -14,6 +14,8 @@ docker compose up -d --build
 
 打开 `http://服务器地址:8080/`，用 `L4D2_WEB_PASSWORD` 登录。密码原值存入浏览器 localStorage，以 `X-Config-Password` 请求头鉴权，不签发 JWT。退出登录会清除浏览器中的密码。QQ AppID、AppSecret 和配置界面密码只从环境变量读取，不出现在业务配置接口中。
 
+配置 API 按连接来源 IP 限制错误密码尝试：令牌桶容量 5 次，每 60 秒恢复 1 次，5 分钟可补满。密码正确时不扣额度；额度耗尽后暂停该 IP 的鉴权，返回 `429`、`Retry-After` 和中文等待提示。反向代理后的客户端默认共享代理 IP 的额度，部署说明见 [Docker 与升级](docs/deployment.md)。
+
 首次启动可以没有 config.json 和群配置。在群中发送 `获取群ID`，复制返回的群 OpenID，在配置页添加群组及服务器，再保存即可立即生效。配置卷路径为 `/app/data/config.json`，重建容器后保留。
 
 群主在 QQ 端开启“接收所有消息”后可直接发指令；未开启时需 @机器人。普通群号不能替代官方群 OpenID。管理员可在已配置的群中发送 `获取用户ID`，复制自己的成员 OpenID 到配置页管理员列表。

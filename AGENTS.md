@@ -34,6 +34,7 @@
 - WS 实现必须保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session；业务处理不得阻塞网关读取和心跳。
 - “获取群ID”是未配置群唯一允许的引导指令，只返回群 OpenID，不执行其他业务。
 - 配置页密码来自 L4D2_WEB_PASSWORD，以原值存 localStorage，每次通过 X-Config-Password 请求头鉴权；不要增加 JWT 或 Cookie。配置 API 不返回 QQ 应用 ID、密钥或页面密码。
+- 配置 API 错误密码按连接 IP 使用容量 5、每 60 秒恢复 1 次的令牌桶；耗尽后先拒绝鉴权，返回 429、Retry-After 和中文等待提示。正确密码不扣额度，不重置错误记录；不信任客户端转发头，来源缓存必须有上限。
 - 同时支持 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`，后者需 QQ 端开启“接收所有消息”；均使用 `GROUP_AND_C2C_EVENT (1<<25)`。收到消息后按指令匹配，未匹配聊天不入队、不回复，跨两种事件以群和消息 ID 去重。QQ群的 `group_openid` 和群成员 `member_openid` 都是字符串；不得当成群号 / QQ 号。未配置群不执行命令。
 - 查询结果、服务器列表与帮助默认使用 `msg_type=2`，同一请求中发送 `markdown.content` 和 `keyboard.content`，不得拆成图片消息和另一条按钮消息来代替原生卡片。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加大、不加粗。用户已在真实群确认能收到原生卡片和连接按钮。
 - 游戏连接按钮的链接统一由 `connect_base_url + '/' + address` 得到，已移除游戏单服连接 URL 配置及覆盖逻辑，不依赖共享的“当前服务器”。基础地址由维护者自定义；无链接配置时可用明确标注的填入指令按钮。

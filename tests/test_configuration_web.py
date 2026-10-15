@@ -27,19 +27,21 @@ async def test_password_is_required_on_reads_and_writes(local_server, http_sessi
         _env_file=None, web_password=PASSWORD, app_id="private-app-id", client_secret="private-key"
     )
     base = await local_server(create_web_app(settings, ConfigStore(path)))
-    for method in ("GET", "POST"):
-        for headers in ({}, {"X-Config-Password": "wrong"}, {"Authorization": PASSWORD}):
-            async with http_session.request(
-                method, base + "/api/config", headers=headers
-            ) as response:
-                assert response.status == 401
-                assert "Set-Cookie" not in response.headers
-    assert not path.exists()
     async with http_session.get(base + "/api/config", headers=HEADERS) as response:
         text = await response.text()
         assert response.status == 200 and response.headers["Cache-Control"] == "no-store"
         assert not any(value in text for value in (PASSWORD, "private-app-id", "private-key"))
         assert json.loads(text)["revision"] == "missing"
+    attempts = 0
+    for method in ("GET", "POST"):
+        for headers in ({}, {"X-Config-Password": "wrong"}, {"Authorization": PASSWORD}):
+            attempts += 1
+            async with http_session.request(
+                method, base + "/api/config", headers=headers
+            ) as response:
+                assert response.status == (401 if attempts <= 5 else 429)
+                assert "Set-Cookie" not in response.headers
+    assert not path.exists()
     for route in ("/", "/app.js", "/style.css"):
         async with http_session.get(base + route) as response:
             assert response.status == 200
