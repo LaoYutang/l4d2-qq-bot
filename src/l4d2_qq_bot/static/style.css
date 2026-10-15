@@ -186,9 +186,21 @@ h3 {
 }
 
 .top-actions {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--page-bg);
+  box-shadow: 0 8px 16px -12px rgba(24, 52, 37, 0.35);
+}
+
+.top-actions .save-state {
+  margin-right: auto;
 }
 
 .save-state {
@@ -1048,6 +1060,9 @@ footer {
 
   .top-actions .button {
     flex: 1;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .overview,
