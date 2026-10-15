@@ -241,7 +241,7 @@ def overview_card(statuses: list[ServerStatus], *, demo: bool = False) -> Card:
     )
 
 
-def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
+def voice_card(status: VoiceStatus) -> Card:
     if status.count is None:
         return Card(
             title=f"{clean_text(status.alias)} · 黑盒语音",
@@ -255,7 +255,7 @@ def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
     elif status.count == 0:
         lines = ("当前频道无人在线。",)
     else:
-        lines = tuple(player_name(name, safe_mode=safe_mode) for name in status.names[:20])
+        lines = tuple(clean_text(name, 80) or "匿名成员" for name in status.names[:20])
         if status.count > len(lines):
             lines += (f"另有 {status.count - len(lines)} 位成员未在本卡片展示。",)
         if status.error:
@@ -270,7 +270,7 @@ def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
             if status.count == 0
             else f"{clean_text(status.alias)} 语音频道\n在线人数: {status.count}\n"
             + (
-                "\n".join(f"- {player_name(name, safe_mode=safe_mode)}" for name in status.names)
+                "\n".join(f"- {clean_text(name, 80) or '匿名成员'}" for name in status.names)
                 if status.names is not None
                 else "在线人数已获取，成员昵称暂不可用。"
             )
