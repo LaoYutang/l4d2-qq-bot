@@ -1,9 +1,8 @@
 """Business configuration is separate from application credentials."""
 
 import json
-import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -42,25 +41,19 @@ class ServerConfig(ConfigModel):
     )
     address: str
     aliases: list[str] = Field(default_factory=list, max_length=20)
-    connect_url: str = Field(default="", max_length=2048)
     hh_channel_id: str = ""
     rcon_password: str = Field(default="", repr=False, max_length=4096)
-    rcon_password_env: str = ""
     panel_url: str = ""
     panel_token: str = Field(default="", repr=False, max_length=4096)
-    panel_token_env: str = ""
 
-    def rcon_secret(self) -> str:
-        return (
-            os.environ.get(self.rcon_password_env, "")
-            if self.rcon_password_env
-            else self.rcon_password
-        )
-
-    def panel_secret(self) -> str:
-        return (
-            os.environ.get(self.panel_token_env, "") if self.panel_token_env else self.panel_token
-        )
+    @model_validator(mode="before")
+    @classmethod
+    def discard_removed_fields(cls, value: Any) -> Any:
+        # Older files may still contain these keys; they have no runtime effect.
+        if isinstance(value, dict):
+            removed = {"connect_url", "rcon_password_env", "panel_token_env"}
+            return {key: item for key, item in value.items() if key not in removed}
+        return value
 
     @field_validator("address")
     @classmethod
@@ -72,33 +65,12 @@ class ServerConfig(ConfigModel):
     def valid_panel_url(cls, value: str) -> str:
         return base_url(value)
 
-    @field_validator("connect_url")
-    @classmethod
-    def valid_connect_url(cls, value: str) -> str:
-        if value:
-            parsed = urlsplit(value)
-            if (
-                parsed.scheme not in {"http", "https"}
-                or not parsed.hostname
-                or parsed.username is not None
-                or parsed.password is not None
-            ):
-                raise ValueError("连接 URL 必须是无凭据的 HTTP(S) 地址")
-        return value
-
     @field_validator("aliases")
     @classmethod
     def valid_aliases(cls, values: list[str]) -> list[str]:
         if any(not normalize_name(value) or len(value) > 80 for value in values):
             raise ValueError("别名不能为空或超过 80 个字符")
         return values
-
-    @field_validator("rcon_password_env", "panel_token_env")
-    @classmethod
-    def valid_env_reference(cls, value: str) -> str:
-        if value and (not value.isidentifier() or not value.isascii()):
-            raise ValueError("凭据字段应填写环境变量名，而非密码本身")
-        return value
 
 
 class GroupConfig(ConfigModel):

@@ -239,7 +239,10 @@ async def test_permission_fallback_and_reply_budget():
 def test_connection_targets_are_per_server_and_utf8_chunks_bounded():
     first = ServerConfig(name="1服", address="203.0.113.1", connect_url="https://connect.example/a")
     second = ServerConfig(name="2服", address="203.0.113.2")
-    assert connect_url(first, "https://connect.example") == "https://connect.example/a"
+    assert connect_url(first, "https://connect.example") == (
+        "https://connect.example/203.0.113.1:27015"
+    )
+    assert connect_url(first, "") == ""
     assert (
         connect_url(second, "https://connect.example")
         == "https://connect.example/203.0.113.2:27015"

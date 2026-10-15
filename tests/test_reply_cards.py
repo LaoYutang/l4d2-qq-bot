@@ -118,30 +118,28 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
 
 
 @pytest.mark.parametrize(
-    "base_url, override_url, buttons, expected_urls",
+    "base_url, buttons, expected_urls",
     [
         (
             "https://connect.example",
-            "",
             True,
             [
                 "https://connect.example/203.0.113.10:27015",
                 "https://connect.example/203.0.113.20:27015",
             ],
         ),
-        ("", "", True, []),
-        ("", "https://custom.example/join", True, ["https://custom.example/join"]),
-        ("https://connect.example", "", False, []),
+        ("", True, []),
+        ("https://connect.example", False, []),
     ],
 )
 async def test_address_list_uses_buttons_or_copyable_commands(
-    base_url, override_url, buttons, expected_urls
+    base_url, buttons, expected_urls
 ):
     client = AsyncMock()
     config = sample_config()
     config.connect_base_url = base_url
     config.groups[0].servers.append(
-        ServerConfig(name="对抗服", address="203.0.113.20:27015", connect_url=override_url)
+        ServerConfig(name="对抗服", address="203.0.113.20:27015")
     )
     app = BotApplication(
         client, config, Settings(_env_file=None, connect_buttons=buttons), None, Mock()
@@ -159,8 +157,6 @@ async def test_address_list_uses_buttons_or_copyable_commands(
         actual = [button for row in rows for button in row["buttons"]]
         assert [button["action"]["data"] for button in actual] == expected_urls
         expected_labels = ["合作服", "对抗服"] if len(expected_urls) == 2 else []
-        if len(expected_urls) == 1:
-            expected_labels = ["对抗服"]
         assert [button["render_data"]["label"] for button in actual] == expected_labels
         assert len(visible_lines(content)) == 1 + 2 - len(expected_urls)
     finally:

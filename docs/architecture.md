@@ -34,7 +34,7 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 
 Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / clientSecret；REST 使用 `Authorization: QQBot {access_token}`，`GET /gateway` 获取网关。保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session、退避重连。
 
-查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。动态连接按钮取每服 connect_url 或 connect_base_url/address，不依赖共享“当前服务器”。
+查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。动态连接按钮统一由 connect_base_url/address 生成，不支持单服 URL 覆盖，不依赖共享“当前服务器”。
 
 PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送，补充文字使用普通文本。原消息 ID 为 d.id，每次发送递增 msg_seq，最多 5 次；原生正文按转义和排版后的 UTF-8 字节分页，普通文本直接按 UTF-8 字节分页。平台明确拒绝按钮或 Markdown 才降级，普通文本降级使用保留的原正文并说明原因；降级不再尝试卡片，不重新执行业务。网络结果不确定时不盲目重发。
 
@@ -44,7 +44,7 @@ PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送
 
 `GET /api/config` 返回 config 和 revision；`POST /api/config` 提交相同结构。两个接口均要求 `X-Config-Password`，服务器使用环境变量 `L4D2_WEB_PASSWORD` 直接比较。浏览器只在 localStorage 保存原密码；退出删除它，不生成 JWT、Cookie 或服务端会话。无密码时不开放 API，静态登录页不含配置数据。
 
-QQ AppID / AppSecret 不进入 AppConfig、磁盘业务配置或 Web API。黑盒凭据、每服 RCON 密码、面板凭据由配置页管理；旧环境变量引用仍兼容。API 使用 no-store，错误不输出敏感输入，访问日志不记录请求头或正文。
+QQ AppID / AppSecret 不进入 AppConfig、磁盘业务配置或 Web API。黑盒凭据、每服 RCON 密码、面板凭据由配置页管理；RCON 与面板只读取直接配置的 rcon_password / panel_token，已删除环境变量引用字段及解析逻辑。单服 connect_url 字段及覆盖逻辑也已删除。读取旧文件时仅丢弃这三项废弃字段，保存后不再写出它们。API 使用 no-store，错误不输出敏感输入，访问日志不记录请求头或正文。
 
 保存先完成 Pydantic 校验，再检查文件 revision；冲突返回 409。临时文件以 0600 创建，在同目录原子替换，Docker 必须挂载可写目录，不能使用只读的单文件 bind mount。
 

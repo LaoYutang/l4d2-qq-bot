@@ -111,7 +111,7 @@ class ManagementService:
                 await reply.text("权限不足：您不在管理员列表中。")
             return
         if command.kind == CommandKind.FLASH:
-            servers = tuple(s for s in group.servers if s.panel_url and s.panel_secret())
+            servers = tuple(s for s in group.servers if s.panel_url and s.panel_token)
             if not servers:
                 await reply.text(
                     "本群尚未配置带面板地址和面板凭据的服务器，请先在插件配置页填写后再试。"
@@ -147,7 +147,7 @@ class ManagementService:
             if len(text.encode("utf-8")) > 4000 or any(ord(char) < 32 for char in text):
                 await reply.text("指令格式错误。")
                 return
-        if not server.rcon_secret():
+        if not server.rcon_password:
             action = "重启" if command.kind == CommandKind.RESTART else "指令"
             await reply.text(f"服务器 {server.name} 未配置 RCON 密码，无法执行{action}。")
             return
@@ -181,27 +181,27 @@ class ManagementService:
                     await reply.text("已取消")
                     return
                 server = self._current_server(group, pending.server)
-                if not server or not server.rcon_secret():
+                if not server or not server.rcon_password:
                     await reply.text("配置已变更，已取消")
                     return
                 if timeout_seconds < 16:
                     await reply.text("超时取消")
                     return
                 result = await self.rcon.execute(
-                    server.address, server.rcon_secret(), pending.command
+                    server.address, server.rcon_password, pending.command
                 )
                 self._audit(message, "rcon", not result.startswith(("RCON 执行出错", "操作超时")))
                 # A misconfigured server may echo the password; never forward it to QQ.
-                secret = server.rcon_secret()
+                secret = server.rcon_password
                 await reply.text(result.replace(secret, "***") if secret else result)
                 return
             if pending.stage == "server":
                 index = selection(text, len(pending.servers), multiple=False)[0]
                 server = self._current_server(group, pending.servers[index])
-                if not server or not server.panel_secret():
+                if not server or not server.panel_token:
                     await reply.text("配置已变更，已取消")
                     return
-                panel = PanelClient(self.http, server.panel_url, server.panel_secret())
+                panel = PanelClient(self.http, server.panel_url, server.panel_token)
                 try:
                     items = await panel.parse(pending.share_url)
                 except PanelError as exc:
@@ -229,10 +229,10 @@ class ManagementService:
                 return
             indices = selection(text, len(pending.items))
             server = self._current_server(group, pending.server)
-            if not server or not server.panel_secret():
+            if not server or not server.panel_token:
                 await reply.text("配置已变更，已取消")
                 return
-            panel = PanelClient(self.http, server.panel_url, server.panel_secret())
+            panel = PanelClient(self.http, server.panel_url, server.panel_token)
             results = []
             deadline = asyncio.get_running_loop().time() + timeout_seconds
             for index in indices:
