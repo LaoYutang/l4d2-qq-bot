@@ -57,6 +57,10 @@ class HeyboxVoiceClient:
                 "/chatroom/v2/channel/user/list", room_id=room_id, channel_id=channel_id
             )
             user_ids = result.get("user_ids")
+            # Upstream treats omitted/null user_ids in a successful channel
+            # response as an empty channel. Other value types remain invalid.
+            if user_ids is None:
+                user_ids = []
             if not isinstance(user_ids, list) or len(user_ids) > 10000:
                 raise ExternalAPIError("黑盒成员列表格式错误")
             if any(not isinstance(item, (str, int)) or isinstance(item, bool) for item in user_ids):

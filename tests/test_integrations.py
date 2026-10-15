@@ -140,9 +140,10 @@ async def test_heybox_real_http_names_are_cached_but_counts_remain_live(local_se
         await voice.close()
 
 
-@pytest.mark.parametrize("result, expected", [({"user_ids": []}, 0), ({}, None)])
-async def test_heybox_zero_and_missing_data_are_distinct(
-    result, expected, local_server, http_session
+@pytest.mark.parametrize("result", [{"user_ids": []}, {}, {"user_ids": None}])
+@pytest.mark.parametrize("include_names", [True, False])
+async def test_heybox_upstream_empty_channel_responses(
+    result, include_names, local_server, http_session
 ):
     async def channel(request):
         return web.json_response({"status": "ok", "result": result})
@@ -152,10 +153,63 @@ async def test_heybox_zero_and_missing_data_are_distinct(
     base = await local_server(server)
     voice = HeyboxVoiceClient(ExternalHTTP(http_session), "bot", "secret", api_base=base)
     try:
+        status = await voice.query("1服", "room", "channel", include_names=include_names)
+        assert status.count == 0 and status.names == () and not status.error
+        assert voice_card(status).content == "1服 语音频道当前无人在线。"
+    finally:
+        await voice.close()
+
+
+@pytest.mark.parametrize("user_ids", ["", {}, 0, False])
+async def test_heybox_invalid_channel_list_is_not_zero(user_ids):
+    http = AsyncMock()
+    http.json.return_value = {"status": "ok", "result": {"user_ids": user_ids}}
+    voice = HeyboxVoiceClient(http, "bot", "fixture-token")
+    try:
         status = await voice.query("1服", "room", "channel")
-        assert status.count == expected
-        if expected is None:
-            assert status.error
+        assert status.count is None and status.error == "外部接口不可用（黑盒成员列表格式错误）"
+    finally:
+        await voice.close()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"status": "error", "result": {"user_ids": []}},
+        {"status": "ok", "result": None},
+        {"status": "ok", "result": []},
+        {"status": "ok"},
+    ],
+)
+async def test_heybox_unsuccessful_or_malformed_response_is_not_empty(payload):
+    http = AsyncMock()
+    http.json.return_value = payload
+    voice = HeyboxVoiceClient(http, "bot", "fixture-token")
+    try:
+        status = await voice.query("1服", "room", "channel")
+        assert status.count is None and status.error
+    finally:
+        await voice.close()
+
+
+async def test_heybox_empty_channel_does_not_cache_zero_after_members_join():
+    http = AsyncMock()
+    http.json.side_effect = [
+        {"status": "ok", "result": {}},
+        {"status": "ok", "result": {"user_ids": ["1"]}},
+        {
+            "status": "ok",
+            "result": {"room_info": {"user_info": [{"user_id": "1", "nickname": "幸存者"}]}},
+        },
+        {"status": "ok", "result": {"user_ids": None}},
+    ]
+    voice = HeyboxVoiceClient(http, "bot", "fixture-token")
+    try:
+        assert (await voice.query("1服", "room", "channel")).count == 0
+        occupied = await voice.query("1服", "room", "channel")
+        assert occupied.count == 1 and occupied.names == ("幸存者",)
+        assert (await voice.query("1服", "room", "channel")).count == 0
+        assert http.json.await_count == 4
     finally:
         await voice.close()
 
