@@ -24,14 +24,12 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     L4D2_DISCOVERY_PATH=/app/data/qq-discovery.json
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 bot \
-    && useradd --uid 10001 --gid bot --create-home bot
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --chmod=0644 config.example.json README.md LICENSE NOTICE.md ./
-RUN mkdir /app/artifacts /app/data && chown bot:bot /app/artifacts /app/data
-USER 10001:10001
+RUN mkdir /app/artifacts /app/data
+USER 0:0
 EXPOSE 8080
 ENTRYPOINT ["/app/.venv/bin/l4d2-qq-bot"]
 CMD ["run", "--config", "/app/data/config.json"]

@@ -28,6 +28,8 @@ docker run -d --name l4d2-qq-bot \
 
 配置保存在 `l4d2-qq-bot-data` 数据卷中，重建容器后保留。需要固定版本时，将 `latest` 替换为已发布的版本号。Compose 部署、源码构建和升级方法见 [部署文档](docs/deployment.md)。
 
+镜像默认以 root 运行。Sealos 部署时将可写持久化存储挂载到 `/app/data`，使用镜像默认启动方式即可，详见 [Sealos 部署说明](docs/deployment.md#sealos-持久化存储)。
+
 ## 首次配置
 
 1. 打开 `http://服务器地址:8080/`，使用 `.env` 中的配置页密码登录。
