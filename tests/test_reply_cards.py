@@ -55,7 +55,7 @@ def test_native_layout_keeps_the_existing_visible_body(card):
     "command, expected, msg_type",
     [
         ("帮助", "查询 服务器名", 2),
-        ("查询1服", "服务器: 一起打僵尸", 2),
+        ("查询1服", "一起打僵尸", 2),
         ("connect 203.0.113.10:27015", "地址: 203.0.113.10:27015", 2),
         ("综合查询", "L4D2 服务器概览", 2),
         ("服务器列表", "服务器列表", 2),
@@ -260,7 +260,7 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
     message = GroupMessage.from_payload(sample_event())
     card = replace(
         server_card(sample_statuses()[0]),
-        content="服务器: 合作服\n在线玩家:\n" + "幸*者 (1:00)\n" * 200,
+        content="合作服\n在线玩家:\n" + "幸*者 (1:00)\n" * 200,
     )
     try:
         await app._card(ReplySession(client, message), card, server=config.groups[0].servers[0])
@@ -272,7 +272,7 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
         )
         assert all("keyboard" not in call.args[3] for call in calls[:-1])
         button = calls[-1].args[3]["keyboard"]["content"]["rows"][0]["buttons"][0]
-        assert button["render_data"]["label"] == "进入服务器"
+        assert button["render_data"]["label"] == "🎮 进入服务器"
         assert button["action"]["data"] == "https://connect.example/203.0.113.10:27015"
         actual = [
             line for call in calls for line in visible_lines(call.args[3]["markdown"]["content"])

@@ -23,7 +23,7 @@ def markdown_text(content: str) -> str:
     first = True
     lines = content.splitlines()
     is_overview = "L4D2 服务器概览" in lines[:2]
-    is_server = not is_overview and any(line.startswith("服务器: ") for line in lines[:2])
+    is_server = not is_overview and any(line.startswith("地图: ") for line in lines[:4])
     for line in lines:
         padding = line[: len(line) - len(line.lstrip())]
         text = escape_text(line.lstrip(), len(line))

@@ -100,14 +100,14 @@ async def test_real_udp_and_map_http_produce_one_native_card_with_true_name(
         payload = api.send_group.await_args.args[3]
         content = payload["markdown"]["content"]
         assert payload["msg_type"] == 2
-        assert content.startswith("# 服务器: 真正的服务器(测试)")
+        assert content.startswith("# 真正的服务器(测试)")
         assert "死亡中心：旅馆" in content and "人数: 2/8" in content
         assert "真实玩家" not in content and r"真\*\*家" in content
         assert "模拟" not in content and "已脱敏" not in content
         assert "查询时间" not in content and "connect " not in content
         assert "\\(" not in content
         button = payload["keyboard"]["content"]["rows"][0]["buttons"][0]
-        assert button["render_data"]["label"] == "进入服务器"
+        assert button["render_data"]["label"] == "🎮 进入服务器"
         assert button["action"]["data"] == f"https://connect.example.test/{address}"
         assert b"T" in udp.requests and udp.requests.count(b"U") >= 2
     finally:
