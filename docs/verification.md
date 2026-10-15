@@ -59,7 +59,7 @@ uv run l4d2-qq-bot run --config config.json
 - 并发查询 1服、2服时，各自正文地址和按钮 URL 相符，不共享可变目标。
 - 真实 QQ：鉴权、WS 登录、群事件、PNG 上传与回复均成功。切换原生模式后，日志确认“原生 Markdown 卡片已发送（按钮：有）”，用户确认“收到原生卡片，底部有连接按钮”。
 - 当时使用标记的模拟数据验收卡片。该群聊模拟入口现已移除，当前状态见本文真实查询记录。
-- 连接基础域名按用户要求配置为 `https://steam-connect.laoyutang.cn`，按钮自动拼接匹配的服务器地址；也支持每服独立 connect_url。
+- 连接基础域名按用户要求配置为 `https://steam-connect.laoyutang.cn`，按钮自动拼接匹配的服务器地址；当时支持的每服独立 connect_url 现已移除，当前统一使用基础 URL。
 - Ruff 检查与格式检查通过；更新后的 wheel / sdist 构建成功。
 - 更新后的 linux/amd64 Docker 镜像构建成功；在断网、只读根文件系统、UID=10001 的容器中通过配置校验、7 项 PNG 演示自检和原生 Markdown / 按钮构造验证。镜像确认不包含 .env 或 config.json；Compose 静默校验通过，没有启动第二份 QQ 实例。
 - 当时尚未验证游戏服务器数据；后续已完成真实 A2S 群测。实际点击后唤起 Steam、长期运行、多 Python 版本远端 CI、arm64 与 GHCR 发布仍待验收。

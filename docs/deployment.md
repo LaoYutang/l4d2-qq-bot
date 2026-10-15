@@ -18,7 +18,7 @@ Compose 使用非 root、只读根文件系统和可写 bot-data 卷。业务配
 
 密码以原值存入当前浏览器 localStorage，每个配置请求直接带上密码，无 JWT。QQ 凭据和页面密码变化后重启容器；页面中的群组、服务器、黑盒、RCON 和面板设置保存后立即应用。退出页面登录会删除本浏览器保存的密码。
 
-旧版已有 config.json 时，可在 Linux / macOS 执行 `docker compose exec -T bot sh -c 'cat > /app/data/config.json' < config.json`，由容器中的 bot 用户写入，再重启 bot。旧的 rcon_password_env / panel_token_env 引用继续支持；原 AstrBot 的群号、QQ 号须人工映射为官方 OpenID。升级前可用 `docker compose cp bot:/app/data/config.json ./config.backup.local.json` 备份业务配置。不要执行 `docker compose down -v`，它会删除命名数据卷。
+旧版已有 config.json 时，可在 Linux / macOS 执行 `docker compose exec -T bot sh -c 'cat > /app/data/config.json' < config.json`，由容器中的 bot 用户写入，再重启 bot。RCON 密码 / 面板凭据只读取直接配置的值，连接 URL 统一使用全局基础地址；旧的 rcon_password_env、panel_token_env、connect_url 字段不再生效，读取时忽略、保存后清除。原 AstrBot 的群号、QQ 号须人工映射为官方 OpenID。升级前可用 `docker compose cp bot:/app/data/config.json ./config.backup.local.json` 备份业务配置。不要执行 `docker compose down -v`，它会删除命名数据卷。
 
 主机和 Docker 实例只保留一份在线；WS 连接使用出站 HTTPS/WSS，A2S 使用到游戏服务器的出站 UDP。QQ 平台的沙箱成员、群事件权限及出口 IP 白名单需在应用后台满足。
 

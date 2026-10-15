@@ -26,13 +26,10 @@
           "name": "1服",
           "aliases": ["合作服", "主服"],
           "address": "127.0.0.1:27015",
-          "connect_url": "",
           "hh_channel_id": "",
           "rcon_password": "",
-          "rcon_password_env": "",
           "panel_url": "",
-          "panel_token": "",
-          "panel_token_env": ""
+          "panel_token": ""
         },
         {
           "name": "2服",

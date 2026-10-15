@@ -64,7 +64,7 @@ async def test_save_validates_conflicts_and_applies_without_restart(
         result = await response.json()
         assert response.status == 200 and result["saved"]
     assert applied[-1].heybox_token == "fixture-heybox-token"
-    assert load_config(path).groups[0].servers[0].rcon_secret() == "fixture-rcon-password"
+    assert load_config(path).groups[0].servers[0].rcon_password == "fixture-rcon-password"
     assert path.stat().st_mode & 0o777 == 0o600
     raw = path.read_bytes()
     for payload, status in (

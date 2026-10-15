@@ -95,9 +95,6 @@ function createEmptyServer() {
     address: "",
     hh_channel_id: "",
     aliases: [],
-    connect_url: "",
-    rcon_password_env: "",
-    panel_token_env: "",
     rcon_password: "",
     panel_url: "",
     panel_token: "",
@@ -138,9 +135,6 @@ function normalizeConfig(rawConfig) {
         ? group.servers.filter(isPlainObject).map((server) => ({
             ...server,
             aliases: Array.isArray(server.aliases) ? server.aliases : [],
-            connect_url: asText(server.connect_url),
-            rcon_password_env: asText(server.rcon_password_env),
-            panel_token_env: asText(server.panel_token_env),
             name: asText(server.name),
             address: asText(server.address),
             hh_channel_id: asText(server.hh_channel_id),
@@ -764,9 +758,6 @@ function createServerCard(server, groupIndex, serverIndex) {
   const meta = card.querySelector(".server-meta");
   for (const [key, label, hint] of [
     ["aliases", "查询别名", "多个别名用逗号分隔"],
-    ["connect_url", "单服连接 URL", "留空使用全局连接基础 URL"],
-    ["rcon_password_env", "RCON 密码环境变量", "兼容已有配置；留空时使用上方密码"],
-    ["panel_token_env", "面板凭据环境变量", "兼容已有配置；留空时使用上方面板凭据"],
   ]) {
     const field = document.createElement("label");
     field.className = "field";
@@ -780,7 +771,7 @@ function createServerCard(server, groupIndex, serverIndex) {
     card.querySelector(".server-fields").append(field);
   }
   const fieldNames = ["name", "address", "hh_channel_id", "rcon_password", "panel_url",
-    "panel_token", "aliases", "connect_url", "rcon_password_env", "panel_token_env"];
+    "panel_token", "aliases"];
   for (const fieldName of fieldNames) {
     const input = card.querySelector(`input[data-field="${fieldName}"]`);
     input.value = fieldName === "aliases" ? (server.aliases || []).join(", ") : server[fieldName] || "";

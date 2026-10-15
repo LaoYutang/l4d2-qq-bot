@@ -71,8 +71,6 @@ def route_event(payload: dict[str, Any], config: AppConfig) -> RoutedCommand | N
 
 
 def connect_url(server: ServerConfig, base: str) -> str:
-    if server.connect_url:
-        return server.connect_url
     return f"{base.rstrip('/')}/{quote(server.address, safe=':[]')}" if base else ""
 
 

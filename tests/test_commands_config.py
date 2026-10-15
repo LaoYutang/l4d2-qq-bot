@@ -65,13 +65,35 @@ def test_openids_are_strings_and_group_aliases_unique():
         AppConfig.model_validate(invalid)
 
 
-def test_bad_url_and_plaintext_credential_reference_rejected():
+def test_bad_base_url_rejected():
     data = sample_config().model_dump()
     data["connect_base_url"] = "https://user:password@example.com"
     with pytest.raises(ValidationError):
         AppConfig.model_validate(data)
-    data["connect_base_url"] = ""
-    data["groups"][0]["servers"][0]["rcon_password_env"] = "password with spaces"
+
+
+def test_removed_server_fields_do_not_resolve_environment_credentials(monkeypatch):
+    monkeypatch.setenv("LEGACY_RCON", "fixture-env-rcon")
+    monkeypatch.setenv("LEGACY_PANEL", "fixture-env-panel")
+    data = sample_config().model_dump()
+    server = data["groups"][0]["servers"][0]
+    server.update(
+        rcon_password="fixture-config-rcon",
+        panel_token="fixture-config-panel",
+        rcon_password_env="LEGACY_RCON",
+        panel_token_env="LEGACY_PANEL",
+        connect_url="https://obsolete.example/join",
+    )
+    loaded = AppConfig.model_validate(data).groups[0].servers[0]
+    assert loaded.rcon_password == "fixture-config-rcon"
+    assert loaded.panel_token == "fixture-config-panel"
+    removed = {"rcon_password_env", "panel_token_env", "connect_url"}
+    assert not removed.intersection(loaded.model_dump())
+    server["rcon_password"] = ""
+    server["panel_token"] = ""
+    loaded = AppConfig.model_validate(data).groups[0].servers[0]
+    assert loaded.rcon_password == "" and loaded.panel_token == ""
+    server["unexpected_field"] = True
     with pytest.raises(ValidationError):
         AppConfig.model_validate(data)
 
