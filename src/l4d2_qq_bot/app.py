@@ -277,7 +277,28 @@ class BotApplication:
             if server and self.settings.connect_buttons:
                 url = connect_url(server, (config or self.config).connect_base_url)
                 label = "进入服务器" if url else "连接指令"
-                keyboard = connection_keyboard(label, url, command=command)
+                game_keyboard = connection_keyboard(label, url, command=command)
+                buttons = game_keyboard["content"]["rows"][0]["buttons"]
+                if keyboard:
+                    buttons.extend(
+                        button
+                        for row in keyboard["content"]["rows"]
+                        for button in row["buttons"]
+                    )
+                if len(buttons) > MAX_LINK_BUTTONS:
+                    raise ValueError(f"单条卡片最多支持 {MAX_LINK_BUTTONS} 个按钮")
+                keyboard = {
+                    "content": {
+                        "rows": [
+                            {"buttons": buttons[index : index + 5]}
+                            for index in range(0, len(buttons), 5)
+                        ]
+                    }
+                }
+            if server and card.links:
+                command = "\n".join(
+                    filter(None, [command, *(f"{link.label}: {link.url}" for link in card.links)])
+                )
             pages = (
                 markdown_text_pages(card.content)
                 if card.content
@@ -555,6 +576,7 @@ class BotApplication:
                     if self.settings.reply_format == "markdown" and self.settings.connect_buttons
                     else connect_url(target, config.connect_base_url)
                 ),
+                voice_connection_url=target.voice_connect_url,
             ),
             server=target,
             config=config,

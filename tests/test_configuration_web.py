@@ -60,6 +60,8 @@ async def test_save_validates_conflicts_and_applies_without_restart(
     data["groups"][0]["admin_openids"] = ["fixture-admin"]
     data["groups"][0]["admin_remarks"] = {"fixture-admin": "群主"}
     data["groups"][0]["servers"][0]["rcon_password"] = "fixture-rcon-password"
+    voice_url = "https://voice.example.test/invite?room=fixture#join"
+    data["groups"][0]["servers"][0]["voice_connect_url"] = voice_url
     async with http_session.post(
         base + "/api/config", headers=HEADERS, json={"config": data, "revision": revision}
     ) as response:
@@ -69,6 +71,8 @@ async def test_save_validates_conflicts_and_applies_without_restart(
     assert result["config"]["groups"][0]["admin_remarks"] == {"fixture-admin": "群主"}
     assert load_config(path).groups[0].admin_remarks == {"fixture-admin": "群主"}
     assert load_config(path).groups[0].servers[0].rcon_password == "fixture-rcon-password"
+    assert result["config"]["groups"][0]["servers"][0]["voice_connect_url"] == voice_url
+    assert load_config(path).groups[0].servers[0].voice_connect_url == voice_url
     assert path.stat().st_mode & 0o777 == 0o600
     raw = path.read_bytes()
     for payload, status in (

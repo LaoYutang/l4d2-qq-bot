@@ -48,8 +48,10 @@ def server_card(
     demo: bool = False,
     temporary: bool = False,
     connection_url: str | None = None,
+    voice_connection_url: str = "",
 ) -> Card:
     label = "模拟数据 · " if demo else ""
+    links = (CardLink("进入语音", voice_connection_url),) if voice_connection_url else ()
     if not status.online:
         target = clean_text(status.address if temporary else status.alias)
         return Card(
@@ -58,6 +60,7 @@ def server_card(
             accent="#ff987c",
             sections=(CardSection("连接状态", (status.error or "服务器暂不可达，请稍后重试。",)),),
             footer="",
+            links=links,
             content=f"无法连接到服务器 {target}，可能服务器离线或网络问题。",
         )
     if status.players is None:
@@ -101,6 +104,7 @@ def server_card(
         )
         + voice_sections,
         footer="",
+        links=links,
         content=server_text(
             status,
             safe_mode=safe_mode,

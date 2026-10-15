@@ -92,6 +92,33 @@ def test_admin_remarks_are_optional_and_follow_member_ids():
     assert AppConfig.model_validate(data).groups[0].admin_remarks == {}
 
 
+def test_voice_connection_url_preserves_invitation_parameters_and_is_optional():
+    data = sample_config().model_dump()
+    server = data["groups"][0]["servers"][0]
+    server.pop("voice_connect_url", None)
+    assert AppConfig.model_validate(data).groups[0].servers[0].voice_connect_url == ""
+    url = "https://voice.example.test/invite?room=fixture&channel=one#join"
+    server["voice_connect_url"] = url
+    assert AppConfig.model_validate(data).groups[0].servers[0].voice_connect_url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "https://user:password@voice.example.test/invite",
+        "https://voice.example.test:invalid/invite",
+        "https://voice.example.test/in vite",
+        "https://voice.example.test/in\nvite",
+    ],
+)
+def test_invalid_voice_connection_url_rejected(url):
+    data = sample_config().model_dump()
+    data["groups"][0]["servers"][0]["voice_connect_url"] = url
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(data)
+
+
 def test_removed_server_fields_do_not_resolve_environment_credentials(monkeypatch):
     monkeypatch.setenv("LEGACY_RCON", "fixture-env-rcon")
     monkeypatch.setenv("LEGACY_PANEL", "fixture-env-panel")
