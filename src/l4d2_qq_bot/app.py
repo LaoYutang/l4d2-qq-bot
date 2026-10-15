@@ -384,7 +384,13 @@ class BotApplication:
             return
         if command.kind in management_kinds:
             if self.management:
-                await self.management.start(command, group, message, reply)
+                await self.management.start(
+                    command,
+                    group,
+                    message,
+                    reply,
+                    timeout_seconds=max(0, min(90, deadline - time.monotonic() - 5)),
+                )
             return
         if command.kind == CommandKind.HELP:
             await self._card(
