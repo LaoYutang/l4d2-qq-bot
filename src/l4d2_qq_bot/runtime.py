@@ -3,12 +3,15 @@
 import asyncio
 import logging
 import signal
+from pathlib import Path
 
 import aiohttp
+from aiohttp import web
 
 from .app import BotApplication
 from .cards.renderer import CardRenderer
 from .config import AppConfig, Settings
+from .config_store import ConfigStore
 from .integrations.heybox import HeyboxVoiceClient
 from .integrations.http import ExternalHTTP
 from .integrations.maps import MapNameClient
@@ -17,8 +20,31 @@ from .qq.client import QQClient
 from .qq.discovery import DiscoveryRecorder
 from .qq.gateway import QQGateway
 from .qq.protocol import GroupMessage
+from .services.management import ManagementService
+from .web import create_web_app
 
 logger = logging.getLogger(__name__)
+
+
+def integrations(session: aiohttp.ClientSession, config: AppConfig, settings: Settings) -> dict:
+    http = ExternalHTTP(
+        session,
+        timeout=config.integrations.timeout_seconds,
+        concurrency=config.integrations.concurrency,
+    )
+    return {
+        "maps": MapNameClient(http, config.map_name_url),
+        "voice": HeyboxVoiceClient(
+            http,
+            config.heybox_bot_id or settings.heybox_bot_id,
+            config.heybox_token or settings.heybox_token.get_secret_value(),
+        ),
+        "workshop": WorkshopClient(
+            http,
+            api_url=config.integrations.workshop_api_url,
+            max_items=config.integrations.workshop_max_items,
+        ),
+    }
 
 
 async def serve(
@@ -26,6 +52,7 @@ async def serve(
     config: AppConfig | None,
     *,
     duration_seconds: float = 0,
+    config_path: Path | None = None,
 ) -> None:
     settings.require_credentials()
     stop = asyncio.Event()
@@ -48,34 +75,39 @@ async def serve(
             token_url=settings.token_url,
         )
         app = None
+        web_runner = None
         if config is not None:
-            if not config.groups or any(
-                group.group_openid.startswith(("REPLACE_", "DEMO_")) for group in config.groups
-            ):
-                raise ValueError("请先运行 discover 获取群 OpenID，再替换 config.json 的群占位值")
-            external_http = ExternalHTTP(
-                external_session,
-                timeout=config.integrations.timeout_seconds,
-                concurrency=config.integrations.concurrency,
-            )
+            if any(group.group_openid.startswith(("REPLACE_", "DEMO_")) for group in config.groups):
+                raise ValueError("请替换群占位值，或使用空 groups 启动后在群中发送“获取群ID”")
+            clients = integrations(external_session, config, settings)
             app = BotApplication(
                 client,
                 config,
                 settings,
                 CardRenderer(settings.card_font_path) if settings.reply_format == "image" else None,
                 discovery,
-                maps=MapNameClient(external_http, config.map_name_url),
-                voice=HeyboxVoiceClient(
-                    external_http,
-                    settings.heybox_bot_id,
-                    settings.heybox_token.get_secret_value(),
-                ),
-                workshop=WorkshopClient(
-                    external_http,
-                    api_url=config.integrations.workshop_api_url,
-                    max_items=config.integrations.workshop_max_items,
-                ),
+                management=ManagementService(clients["maps"].http),
+                **clients,
             )
+            if settings.web_password.get_secret_value():
+                store = ConfigStore(config_path or settings.config_path)
+                await store.read()
+
+                def apply_config(updated):
+                    app.reconfigure(updated, **integrations(external_session, updated, settings))
+
+                store.on_change = apply_config
+                web_runner = web.AppRunner(create_web_app(settings, store), access_log=None)
+                try:
+                    await web_runner.setup()
+                    await web.TCPSite(web_runner, settings.web_host, settings.web_port).start()
+                except BaseException:
+                    await web_runner.cleanup()
+                    await app.close()
+                    raise
+                logger.info("配置界面已启动，端口 %s", settings.web_port)
+            else:
+                logger.warning("未设置 L4D2_WEB_PASSWORD，配置界面未启用")
             app.start()
             on_event = app.offer_event
             logger.info("查询数据模式：真实 A2S，外部查询使用真实接口")
@@ -108,6 +140,8 @@ async def serve(
             for task in done:
                 await task
         finally:
+            if web_runner is not None:
+                await web_runner.cleanup()
             await gateway.close()
             for task in (gateway_task, stop_task, writer):
                 task.cancel()

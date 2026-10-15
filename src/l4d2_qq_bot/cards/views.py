@@ -3,7 +3,15 @@
 import math
 import unicodedata
 
-from ..domain import Card, CardLink, CardSection, ServerStatus, VoiceStatus, WorkshopResult
+from ..domain import (
+    Card,
+    CardLink,
+    CardSection,
+    ServerStatus,
+    VoiceStatus,
+    WorkshopItem,
+    WorkshopResult,
+)
 from ..integrations.workshop import workshop_url
 
 
@@ -27,21 +35,30 @@ def duration_text(seconds: float) -> str:
     hours, rest = divmod(rest, 3600)
     minutes, seconds = divmod(rest, 60)
     if days:
-        return f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}"
+        return f"{days}:{hours:02d}:{minutes:02d}:{seconds:02d}"
     if hours:
         return f"{hours}:{minutes:02d}:{seconds:02d}"
     return f"{minutes}:{seconds:02d}"
 
 
-def server_card(status: ServerStatus, *, safe_mode: bool = True, demo: bool = False) -> Card:
+def server_card(
+    status: ServerStatus,
+    *,
+    safe_mode: bool = True,
+    demo: bool = False,
+    temporary: bool = False,
+    connection_url: str | None = None,
+) -> Card:
     label = "模拟数据 · " if demo else ""
     if not status.online:
+        target = clean_text(status.address if temporary else status.alias)
         return Card(
             title=clean_text(status.alias),
             subtitle=f"{label}离线 / 无法连接 · 未获取到真实服务器名",
             accent="#ff987c",
             sections=(CardSection("连接状态", (status.error or "服务器暂不可达，请稍后重试。",)),),
             footer="",
+            content=f"无法连接到服务器 {target}，可能服务器离线或网络问题。",
         )
     if status.players is None:
         player_lines = ("玩家列表获取失败或未开放，在线人数以服务器报告为准。",)
@@ -84,7 +101,104 @@ def server_card(status: ServerStatus, *, safe_mode: bool = True, demo: bool = Fa
         )
         + voice_sections,
         footer="",
+        content=server_text(
+            status,
+            safe_mode=safe_mode,
+            temporary=temporary,
+            connection_url=connection_url,
+            demo=demo,
+        ),
     )
+
+
+def server_text(
+    status: ServerStatus,
+    *,
+    safe_mode: bool,
+    temporary: bool,
+    connection_url: str | None,
+    demo: bool = False,
+) -> str:
+    lines = [f"服务器: {clean_text(status.server_name)}"]
+    if demo:
+        lines.insert(0, "模拟数据")
+    if temporary:
+        lines.append(f"地址: {status.address}")
+    lines.append(f"地图: {clean_text(status.map_name or status.map_code)}")
+    voice = f" (🎧{status.voice_count})" if status.voice_count is not None and not temporary else ""
+    lines.extend(
+        [
+            f"人数: {status.player_count}/{status.max_players}{voice}",
+            f"延迟: {status.ping_ms}ms",
+            "",
+        ]
+    )
+    if status.players:
+        lines.append("在线玩家:")
+        lines.extend(
+            f"- {player_name(p.name, safe_mode=safe_mode)} ({duration_text(p.duration_seconds)})"
+            for p in status.players
+        )
+    elif status.players is None:
+        lines.append("玩家列表获取失败或未开放，在线人数以服务器报告为准。")
+    else:
+        lines.append("当前无玩家在线。")
+    if connection_url is not None:
+        lines.append(
+            f"点击直连: {connection_url}"
+            if connection_url
+            else f"连接指令: connect {status.address}"
+        )
+    return "\n".join(lines)
+
+
+def display_width(text: str) -> int:
+    return sum(
+        2 if "\u4e00" <= char <= "\u9fff" or "\uff00" <= char <= "\uffef" else 1 for char in text
+    )
+
+
+def truncate_width(text: str, width: int) -> str:
+    if display_width(text) <= width:
+        return text
+    result = ""
+    for char in text:
+        if display_width(result + char) > width:
+            break
+        result += char
+    return result + "..."
+
+
+def overview_text(statuses: list[ServerStatus], *, demo: bool = False) -> str:
+    online = [s for s in statuses if s.online]
+    lengths = [len(f"{s.player_count}/{s.max_players}") for s in online]
+    player_width = max(lengths, default=0)
+    lines = [
+        "=== L4D2 服务器概览 ===",
+        f"服务器: {len(online)}/{len(statuses)} 在线",
+        f"人数: {sum(s.player_count for s in online)}/{sum(s.max_players for s in online)}",
+        "-" * 25,
+    ]
+    if demo:
+        lines.insert(0, "模拟数据")
+    for status in statuses:
+        prefix = f"[{clean_text(status.alias)}]"
+        if not status.online:
+            lines.append(f"{prefix} 离线或无法连接")
+            continue
+        width = display_width(prefix)
+        padding = "\u3000" * (width // 2) + " " * (width % 2) + " "
+        players = f"{status.player_count}/{status.max_players}"
+        voice = f"   🎧{status.voice_count}" if status.voice_count is not None else ""
+        name = clean_text(status.map_name or status.map_code).split("|")[0].strip()
+        lines.extend(
+            [
+                f"{prefix} {truncate_width(clean_text(status.server_name), 20)}",
+                f"{padding}{players}{' ' * ((player_width - len(players)) * 2)}{voice}",
+                f"{padding}{truncate_width(name, 15)}",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def overview_card(statuses: list[ServerStatus], *, demo: bool = False) -> Card:
@@ -124,6 +238,7 @@ def overview_card(statuses: list[ServerStatus], *, demo: bool = False) -> Card:
         ),
         sections=tuple(sections) or (CardSection("暂无服务器", ("请先配置本群服务器。",)),),
         footer=f"{label}在线统计采用服务器报告 · L4D2 QQ BOT",
+        content=overview_text(statuses, demo=demo),
     )
 
 
@@ -134,6 +249,7 @@ def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
             subtitle="未配置" if not status.configured else "查询失败",
             sections=(CardSection("状态", (status.error,)),),
             footer="",
+            content=status.error,
         )
     if status.names is None:
         lines = ("在线人数已获取，成员昵称暂不可用。",)
@@ -150,6 +266,16 @@ def voice_card(status: VoiceStatus, *, safe_mode: bool = True) -> Card:
         subtitle=f"{status.count} 人在线",
         sections=(CardSection("在线成员", lines),),
         footer="",
+        content=(
+            f"{clean_text(status.alias)} 语音频道当前无人在线。"
+            if status.count == 0
+            else f"=== {clean_text(status.alias)} 语音频道 ===\n在线人数: {status.count}\n"
+            + (
+                "\n".join(f"- {player_name(name, safe_mode=safe_mode)}" for name in status.names)
+                if status.names is not None
+                else "在线人数已获取，成员昵称暂不可用。"
+            )
+        ),
     )
 
 
@@ -164,13 +290,29 @@ def file_size_text(value: int | None) -> str:
     return "接口未提供大小"
 
 
-def workshop_card(result: WorkshopResult, *, page: int = 1) -> Card:
+def workshop_entry(item: WorkshopItem) -> str:
+    size = item.size_bytes if item.size_bytes is not None else "未知大小"
+    download = (
+        f"下载: {item.download_url}\n"
+        if item.download_url
+        else "接口未提供直接下载地址，请在 Steam 工坊订阅。\n"
+    )
+    if not item.available:
+        download = "条目已删除、私有或接口未返回详情。\n"
+    return (
+        f"标题: {clean_text(item.title) or '未知标题'}\n"
+        f"文件: {clean_text(item.filename)} ({size})\n" + download + "-" * 20
+    )
+
+
+def workshop_card(result: WorkshopResult, *, page: int = 0) -> Card:
     if result.error:
         return Card(
             title="Steam 工坊查询失败",
             sections=(CardSection("状态", (result.error,)),),
             footer="",
             links=(CardLink("打开工坊", workshop_url(result.item_id)),),
+            content=f"解析失败: {result.error}",
         )
     if not result.items:
         return Card(
@@ -179,9 +321,9 @@ def workshop_card(result: WorkshopResult, *, page: int = 1) -> Card:
             footer="",
             links=(CardLink("打开合集", workshop_url(result.item_id)),),
         )
-    if not 1 <= page <= len(result.items):
+    if not 0 <= page <= len(result.items):
         raise ValueError(f"当前可查看 {len(result.items)} 页，请发送 工坊 {result.item_id} 页码。")
-    item = result.items[page - 1]
+    item = result.items[max(0, page - 1)]
     lines = [f"工坊 ID：{item.item_id}"]
     if item.available:
         if item.filename:
@@ -207,4 +349,8 @@ def workshop_card(result: WorkshopResult, *, page: int = 1) -> Card:
         sections=(CardSection("文件信息", tuple(lines)),),
         footer=footer,
         links=tuple(links),
+        content=(
+            f"=== 创意工坊{'合集' if result.collection else '单品'}解析 ===\n"
+            + "\n".join(workshop_entry(entry) for entry in (result.items if page == 0 else (item,)))
+        ),
     )

@@ -1,130 +1,102 @@
 # L4D2 QQ Bot
 
-独立运行的 Left 4 Dead 2 QQ 官方机器人，通过 **WebSocket 接收事件、OpenAPI 发送 QQ 原生 Markdown 卡片与动态连接按钮**。目标是完整承接 [l4d2-with-astrbot](https://github.com/LaoYutang/l4d2-with-astrbot) 的业务能力，移除 AstrBot 依赖。
+独立运行的 L4D2 QQ 官方机器人。通过 WebSocket 接收群消息，使用 QQ 原生 Markdown 与动态连接按钮回复；PNG 为可选模式，不依赖 AstrBot。
 
-已接入 QQ 官方 WS 与群消息收发，服务器查询、总览和临时 connect 均使用真实 A2S。已接入地图真名、黑盒语音和 Steam 工坊单品 / 合集查询；外部接口缺配置或失败时明确说明，不生成虚构数据。用户已在真实群确认服务器真名和实时数据正常。管理操作仍按 roadmap 开发。
+已对照 [l4d2-with-astrbot](https://github.com/LaoYutang/l4d2-with-astrbot) 的查询、地图、语音、工坊、RCON、重启、闪传和配置页功能迁移。完整核对记录及保留差异见 [功能对照](docs/parity.md)。
 
-- [开发约定](AGENTS.md)
-- [整体规划与功能对照](docs/roadmap.md)
-- [架构与 API 约定](docs/architecture.md)
-- [本次示例的验收步骤](docs/verification.md)
-- [Docker 与 tag 发布](docs/deployment.md)
-
-## QQ 群内测试
+## Docker 启动
 
 ```bash
-uv sync --frozen --group dev
 cp .env.example .env
-cp config.example.json config.json
-```
-
-Windows 使用 `Copy-Item`；已有私人配置不要覆盖。把 AppID / AppSecret 填入本地 `.env`，服务器地址填入 `config.json`。这些文件被 Git 和 Docker 忽略，不会打进镜像；鉴权时凭据只发给配置的官方 Token 接口，日志不输出凭据或完整消息。
-
-首次不知道群 OpenID 时：
-
-```bash
-uv run l4d2-qq-bot discover --duration 120
-```
-
-看到“QQ WS 已登录”后，在测试群 @机器人发送“帮助”。此模式不会回复，群 / 成员 OpenID 写入 `.cache/qq-discovery.json`。将需要测试的群 OpenID 填进 `groups[].group_openid`；不能用普通群号替代。只配置本次要启用的群。
-
-```bash
-# 群聊入口始终使用真实数据。
-uv run l4d2-qq-bot run --config config.json
-```
-
-在 QQ 端为机器人开启“接收所有消息”后，可在群里直接发送 `帮助`、`查询1服`、`综合查询`、`服务器列表`、`connect IP:Port`、`语音1服` 或 Steam 工坊链接，无需 @；原有 @ 方式仍然支持。地址列表每页 6 台，`服务器列表 2` 看下一页。默认不发等待提示，避免占用被动回复次数。未配置群、未匹配的快捷名或聊天内容不会回复，也不占用命令队列。修改 `.env` / 配置后重启；不要同时运行两份实例。
-
-免 @ 使用官方 [`GROUP_MESSAGE_CREATE` 全量群消息事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)，与 @ 事件共用现有 WS intent。QQ 端未开启“接收所有消息”时仍需 @，本地配置不能替代平台开关；按群消息 ID 去重，同一消息经两个事件投递只回复一次。消息接收后仍按指令规则匹配，不保存聊天正文。
-
-开关入口在最新版手机 QQ：由群主在本群聊天或成员列表中点击机器人，进入相关权限设置，允许接收群内全部消息；参见[官方常见问题](https://bot.q.qq.com/wiki/bot_FAQ/)。用户已在手机开启后验证，直接发送指令可以正常回复。
-
-`servers[].name` 是查询快捷名，例如 `1服`；`aliases` 可添加其他输入别名。卡片标题和综合查询展示的是 A2S 返回的真实 `server_name`，配置快捷名只作辅助标识。单服卡片保留玩家名脱敏，隐藏“已脱敏”提示、连接指令和查询时间，底部仅显示“进入服务器”按钮。按钮被拒绝时才提供连接指令作为补救。
-
-默认 `.env` 为 `L4D2_REPLY_FORMAT=markdown`、`L4D2_CONNECT_BUTTONS=true`。卡片正文和按钮在同一个发送请求中提交，不需要图片托管或 Markdown 模板 ID。自定义按钮仍受应用权限限制；若被平台拒绝，会在群回复与日志中明确提示。
-
-动态连接地址在 `config.json` 自定义：
-
-```json
-{
-  "connect_base_url": "https://steam-connect.laoyutang.cn"
-}
-```
-
-例如 1服的 address 为 `106.54.214.111:37015`，其按钮跳转 `https://steam-connect.laoyutang.cn/106.54.214.111:37015`；查询 2服时自动使用 2服的地址。每服的 `connect_url` 可覆盖这一规则。基础地址留空时显示填入连接指令按钮，不假装可以直接跳转游戏；Steam 的实际唤起由连接网页和客户端处理。
-
-需要 PNG 回复时可设置 `L4D2_REPLY_FORMAT=image`，这一模式会发送图片和补充连接文字。
-
-## 扩展查询配置
-
-- 地图真名：设置 `map_name_url`，按原项目协议请求 `GET 基础地址/地图代码`，读取 UTF-8 纯文本，缓存 1 小时并合并并发请求。未配置或接口失败时保留服务器实际返回的地图代码。
-- 黑盒语音：在 `.env` 填写 `L4D2_HEYBOX_BOT_ID`、`L4D2_HEYBOX_TOKEN`，本群填写 `hh_room_id`，各服务器填写 `hh_channel_id`。`语音1服` 查询人数 / 名单；单服和综合查询附带频道人数。人数每次实时查询，昵称缓存 10 分钟。昵称失败保留已取得的人数，无法获取人数时不显示为零。
-- Steam 工坊：默认调用 Steam 官方详情与合集接口，无需 Steam API Key。支持直接发链接、`工坊 ID`、`工坊 ID 页码`；合集最多读取前 20 项，每页展示一项。显示实际标题、大小及 API 返回的下载地址；未提供下载链接时提示在 Steam 订阅。
-- 原项目下载解析 API：可在 `integrations.workshop_api_url` 配置兼容 `POST [数字 ID]` 的接口。默认留空使用 Steam 官方接口。`integrations.timeout_seconds`、`concurrency`、`workshop_max_items` 控制超时、外部请求并发和合集上限。
-
-QQ 和外部 API 使用独立 HTTP 会话。黑盒 Token 仅通过对应请求头传递，不写入 QQ 请求、日志或卡片。
-
-## 本地离线预览
-
-安装 Python 3.12+ 和 [uv](https://docs.astral.sh/uv/)，然后运行：
-
-```bash
-uv sync --frozen --group dev
-uv run l4d2-qq-bot validate --config config.example.json
-uv run l4d2-qq-bot demo --output artifacts/demo
-```
-
-打开 `artifacts/demo/index.html`，对照四张卡片和 `report.json` 验收。示例不会连接 QQ 或游戏服务器，所有示例数据均为模拟数据。`preview --output artifacts/server-card.png` 可以只生成单服卡片。
-
-真实服务器的本地查询，不需要 QQ 凭据：
-
-```bash
-uv run l4d2-qq-bot query 你的服务器地址:27015 --output artifacts/live-card.png
-```
-
-省略端口时使用 27015。临时查询默认只接受公网地址；查询自己管理的局域网服务器时可显式加 `--allow-private`。A2S 的延迟是运行机器到游戏服务器的往返耗时。
-
-PNG 渲染使用系统中文字体。Windows 自动寻找微软雅黑，Linux 可安装 `fonts-noto-cjk`。也可以用 `L4D2_CARD_FONT_PATH` 指定 TTF / TTC / OTF；字体缺失时会明确报错，避免生成乱码。Docker 已安装 Noto CJK。
-
-## 配置
-
-```bash
-# Linux / macOS；Windows 可使用 Copy-Item。
-cp .env.example .env
-cp config.example.json config.json
-```
-
-业务配置使用 `groups[].group_openid` 隔离群组。管理员使用 `admin_openids`；它们是 QQ 官方平台的字符串 OpenID，不能填普通群号 / QQ 号。示例中的占位 OpenID 只用于本地验证。
-
-凭据通过 `.env` / 环境变量提供；`config.json` 和 `.env` 已加入忽略规则。`rcon_password_env`、`panel_token_env` 引用环境变量名，相关管理能力目前仅完成配置设计，尚不可执行。
-
-## 目标指令
-
-| 指令 | 目标结果 | 当前状态 |
-| --- | --- | --- |
-| `查询 合作服` / `查询1服` | 原生卡片、状态、地图、玩家、动态连接按钮 | 已接入，真实群已确认卡片与按钮显示 |
-| `connect IP:Port` | 临时查询 | 已接入；默认仅公网，可信配置服允许私网 |
-| `综合查询` | 多服务器概览、离线状态 | 已接入；最多 4 张总览卡片 |
-| `服务器列表` / `服务器地址` / `连接指令` | 原生卡片内可复制连接指令 | 已接入，支持页码 |
-| `语音 1服` | 黑盒频道名单、在线人数 | 已接真实 API，需配置黑盒凭据与频道 |
-| `设置 1服 status` / `重启 1服` | 管理员操作、结果卡片 | 已规划 |
-| Steam 创意工坊链接 / `工坊 ID 页码` | 单品 / 合集、大小、可用下载地址 | 已接 Steam 官方接口；兼容原解析 API |
-| QQ 闪传链接 | 选服、选文件、面板下载与安装 | 已规划 |
-
-Python + asyncio + aiohttp + python-a2s + Pillow；不需要安装 AstrBot。完整验收项和实现先后顺序见 roadmap。
-
-## 检查与镜像
-
-```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-docker build -t l4d2-qq-bot:local .
-docker run --rm l4d2-qq-bot:local validate --config config.example.json
-docker compose config --quiet
+# 在 .env 中填写 L4D2_APP_ID、L4D2_CLIENT_SECRET、L4D2_WEB_PASSWORD。
 docker compose up -d --build
 ```
 
-GitHub Actions 对 PR / 分支执行检查；推送 `v0.1.0` 这样的 tag 时，先检查再构建 amd64 / arm64 镜像并发布到 `ghcr.io/<owner>/<repo>`。预发布 tag 不更新 `latest`。初始化不会自动推送 tag 或发布镜像。
+打开 `http://服务器地址:8080/`，用 `L4D2_WEB_PASSWORD` 登录。密码原值存入浏览器 localStorage，以 `X-Config-Password` 请求头鉴权，不签发 JWT。退出登录会清除浏览器中的密码。QQ AppID、AppSecret 和配置界面密码只从环境变量读取，不出现在业务配置接口中。
 
-上游为 AGPL-3.0；本项目按 AGPL-3.0-only 初始化，来源与复用边界见 [NOTICE](NOTICE.md)。
+首次启动可以没有 config.json 和群配置。在群中发送 `获取群ID`，复制返回的群 OpenID，在配置页添加群组及服务器，再保存即可立即生效。配置卷路径为 `/app/data/config.json`，重建容器后保留。
+
+群主在 QQ 端开启“接收所有消息”后可直接发指令；未开启时需 @机器人。普通群号不能替代官方群 OpenID。管理员可在已配置的群中发送 `获取用户ID`，复制自己的成员 OpenID 到配置页管理员列表。
+
+## 配置界面
+
+沿用原版群组和服务器的增删、排序、管理员列表及密码显示切换。支持：
+
+- 全局连接基础 URL、地图名称 API、玩家名脱敏、黑盒机器人 ID / Token。
+- 每群的名称、OpenID、管理员 OpenID、黑盒房间。
+- 每服的查询快捷名、别名、地址、独立连接 URL、语音频道、RCON 密码、面板 URL / 凭据。
+- A2S 和外部接口的超时、并发，以及工坊解析 API / 合集上限。
+
+保存时校验重复群、服务器名称、别名和地址，通过版本号检查覆盖冲突，再原子替换配置文件。保存后新命令立即使用新配置，进行中的查询保持原快照，旧地图缓存不会串到新接口。配置变更会取消尚待确认的管理操作。
+
+服务器密码和面板凭据可直接在界面填写；旧的 `rcon_password_env`、`panel_token_env` 引用仍兼容，非空时优先读取对应环境变量。黑盒凭据优先使用界面配置，旧 `L4D2_HEYBOX_BOT_ID/TOKEN` 为兼容回退。QQ 凭据始终在环境变量中。
+
+## 群指令
+
+| 指令 | 功能 |
+| --- | --- |
+| `获取群ID` | 回复当前群 OpenID；尚未配置的群也可使用 |
+| `获取用户ID` | 回复当前成员 OpenID，方便配置管理员 |
+| `查询1服` / `查询 合作服` | 服务器真名、地图、人数、延迟、玩家和时长，附进入服务器按钮 |
+| `connect IP:端口` | 临时查询，默认端口 27015，默认只接受公网 |
+| `综合查询` | 按配置顺序显示服务器和人数统计、地图、语音人数 |
+| `服务器列表` / `服务器地址` / `连接指令` | 原版完整地址列表；显式加页码时每页 6 台 |
+| `语音1服` | 黑盒语音频道人数和名单 |
+| Steam 工坊链接 / `工坊 ID` | 原版单品 / 合集解析正文；`工坊 ID 页码` 可仅看一项 |
+| `设置1服 status` / `重启1服` | 本群管理员操作，30 秒内回复“确认”执行 |
+| QQ 闪传链接 | 本群管理员选服务器、选文件或“全部”，向面板提交下载任务 |
+| `帮助` | 指令列表 |
+
+查询正文采用原版字段、时长和结果文案，去掉新版的产品说明、快捷名说明及统计页脚；不发送等待提示。原生正文和连接按钮仍在同一条 QQ 请求中发送。玩家列表不可用与真正零玩家分开显示。未配置群除获取群 ID 外不执行命令；未匹配聊天不入队、不回复，跨全量 / @ 事件去重。
+
+RCON 精确匹配本群服务器，不使用模糊匹配。重启使用 `_restart`，确认按群和成员隔离。闪传选择 30 秒后过期，只接受 `.vpk/.zip/.rar/.7z`；选择文件即确认向所选服务器提交任务。提交失败或超时不自动重试，避免重复执行；实际安装由面板完成。
+
+## 地图与扩展接口
+
+地图按原版请求 `GET {map_name_url}/{map_code}`，读取 UTF-8 纯文本，超时 2 秒。成功缓存 1 小时，同图并发合并，失败不缓存并回退实际地图代码。单服、综合、临时 connect 和本地 query 都使用同一客户端与编排逻辑。
+
+黑盒频道人数每次实时查询，房间昵称缓存 10 分钟。语音失败不改变游戏服务器状态，无法取得人数时不显示为零。工坊默认使用 Steam 官方详情 / 合集接口，也可在配置页填写原版兼容解析 API（`POST [数字 ID]`）；没有下载地址时保留真实元信息。
+
+外部接口和 QQ 使用独立 HTTP 会话。所有调用有超时、响应上限与并发限制，缓存和会话有容量限制，凭据不会写入日志。
+
+## 本地运行与检查
+
+Python 3.12+、[uv](https://docs.astral.sh/uv/)：
+
+支持直接读取电脑上的系统 / 进程环境变量，环境变量优先于 `.env`。例如在同一个 PowerShell 窗口中设置后启动：
+
+```powershell
+$env:L4D2_APP_ID="你的AppID"
+$env:L4D2_CLIENT_SECRET="你的AppSecret"
+$env:L4D2_WEB_PASSWORD="change-this-password"
+uv run l4d2-qq-bot run
+```
+
+如果已在系统设置中添加这三个变量，重开终端后直接运行最后一条命令即可。`.env` 与 Docker 都是可选方式。
+
+```bash
+uv sync --frozen --group dev
+# 可选：也可以使用 .env 提供环境变量。
+cp .env.example .env
+uv run l4d2-qq-bot run
+# 仅配置页面，不连接 QQ：
+uv run l4d2-qq-bot configure --config config.json
+# 配置校验 / 离线预览 / 真实本地查询：
+uv run l4d2-qq-bot validate --config config.example.json
+uv run l4d2-qq-bot demo --output artifacts/demo
+uv run l4d2-qq-bot query 你的服务器地址:27015 --config config.json
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+`configure` 只启动配置页；由 `run` 加载其保存结果。未设置 `L4D2_WEB_PASSWORD` 时 `run` 不开放配置接口，`configure` 拒绝启动。Docker Compose 要求三个环境变量均已填写。`discover` 仍可只监听并把 OpenID 写入本地忽略文件，不回复消息。
+
+`L4D2_REPLY_FORMAT=markdown` 为默认；`image` 使用系统中文字体与 Pillow。Docker 内置 Noto CJK。离线 demo / preview 使用明确标记的模拟数据，run 始终使用真实查询。
+
+- [Docker 与升级](docs/deployment.md)
+- [架构和接口](docs/architecture.md)
+- [功能核对与验证记录](docs/parity.md)
+- [后续规划](docs/roadmap.md)
+
+PR / 分支 CI 检查与构建；只有维护者推送 `v*.*.*` tag 才发布 GHCR 多架构镜像。上游和本项目均遵守 AGPL-3.0，来源见 [NOTICE](NOTICE.md)。

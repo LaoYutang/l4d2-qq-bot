@@ -19,14 +19,26 @@ class QueryCoordinator:
     ):
         self.query, self.maps, self.voice = query, maps, voice
 
+    async def address(
+        self,
+        address: str,
+        *,
+        alias: str = "",
+        allow_private: bool = False,
+        players: bool = True,
+    ) -> ServerStatus:
+        status = await self.query.query(
+            address, alias=alias, allow_private=allow_private, include_players=players
+        )
+        return await self.enrich_map(status)
+
     async def server(
         self, server: ServerConfig, group: GroupConfig, *, players: bool = True
     ) -> ServerStatus:
         async def game():
-            status = await self.query.query(
-                server.address, alias=server.name, allow_private=True, include_players=players
+            return await self.address(
+                server.address, alias=server.name, allow_private=True, players=players
             )
-            return await self.enrich_map(status)
 
         if self.voice and self.voice.configured(group.hh_room_id, server.hh_channel_id):
             status, voice = await asyncio.gather(

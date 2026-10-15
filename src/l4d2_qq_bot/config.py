@@ -1,6 +1,7 @@
 """Business configuration is separate from application credentials."""
 
 import json
+import os
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -43,9 +44,23 @@ class ServerConfig(ConfigModel):
     aliases: list[str] = Field(default_factory=list, max_length=20)
     connect_url: str = Field(default="", max_length=2048)
     hh_channel_id: str = ""
+    rcon_password: str = Field(default="", repr=False, max_length=4096)
     rcon_password_env: str = ""
     panel_url: str = ""
+    panel_token: str = Field(default="", repr=False, max_length=4096)
     panel_token_env: str = ""
+
+    def rcon_secret(self) -> str:
+        return (
+            os.environ.get(self.rcon_password_env, "")
+            if self.rcon_password_env
+            else self.rcon_password
+        )
+
+    def panel_secret(self) -> str:
+        return (
+            os.environ.get(self.panel_token_env, "") if self.panel_token_env else self.panel_token
+        )
 
     @field_validator("address")
     @classmethod
@@ -130,6 +145,8 @@ class AppConfig(ConfigModel):
     safe_mode: bool = True
     connect_base_url: str = ""
     map_name_url: str = ""
+    heybox_bot_id: str = Field(default="", max_length=128)
+    heybox_token: str = Field(default="", repr=False, max_length=4096)
     query: QueryConfig = Field(default_factory=QueryConfig)
     integrations: IntegrationConfig = Field(default_factory=IntegrationConfig)
     groups: list[GroupConfig] = Field(default_factory=list, max_length=100)
@@ -168,6 +185,9 @@ class Settings(BaseSettings):
     reply_format: Literal["markdown", "image"] = "markdown"
     connect_buttons: bool = True
     discovery_path: Path = Path(".cache/qq-discovery.json")
+    web_password: SecretStr = SecretStr("")
+    web_host: str = "0.0.0.0"
+    web_port: int = Field(default=8080, ge=1, le=65535)
 
     def require_credentials(self) -> None:
         missing = []

@@ -5,7 +5,7 @@ import logging
 import time
 from collections import OrderedDict
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
@@ -21,7 +21,8 @@ from .integrations.workshop import WorkshopClient
 from .qq.client import QQAPIError, QQClient, QQTransportError
 from .qq.discovery import DiscoveryRecorder
 from .qq.protocol import GroupMessage
-from .qq.replies import ReplySession, connection_keyboard, link_keyboard
+from .qq.replies import ReplySession, connection_keyboard, link_keyboard, split_text
+from .services.management import ManagementService
 from .services.queries import QueryCoordinator
 from .services.query import QueryService, TargetNotAllowed
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class RoutedCommand:
     message: GroupMessage
-    group: GroupConfig
+    group: GroupConfig | None
     command: Command
     server: ServerConfig | None = None
 
@@ -43,10 +44,17 @@ def route_event(payload: dict[str, Any], config: AppConfig) -> RoutedCommand | N
     group = next(
         (item for item in config.groups if item.group_openid == message.group_openid), None
     )
-    if group is None:
-        return None
-    command = parse_command(message.content)
+    try:
+        command = parse_command(message.content)
+    except ValueError:
+        if group is None:
+            return None
+        raise
     if command is None:
+        return None
+    if command.kind == CommandKind.GROUP_ID:
+        return RoutedCommand(message, group, command)
+    if group is None:
         return None
     server = None
     if command.kind == CommandKind.QUERY:
@@ -68,6 +76,23 @@ class QueuedMessage:
     received_at: float
 
 
+@dataclass
+class ApplicationResources:
+    config: AppConfig
+    query: QueryService
+    queries: QueryCoordinator
+    maps: MapNameClient | None
+    voice: HeyboxVoiceClient | None
+    workshop: WorkshopClient | None
+    users: int = 0
+    retired: bool = False
+
+    async def close(self) -> None:
+        for client in (self.maps, self.voice, self.workshop):
+            if client is not None:
+                await client.close()
+
+
 class BotApplication:
     def __init__(
         self,
@@ -81,6 +106,7 @@ class BotApplication:
         maps: MapNameClient | None = None,
         voice: HeyboxVoiceClient | None = None,
         workshop: WorkshopClient | None = None,
+        management: ManagementService | None = None,
     ):
         self.client, self.config, self.settings = client, config, settings
         self.renderer, self.discovery = renderer, discovery
@@ -89,6 +115,11 @@ class BotApplication:
         )
         self.maps, self.voice, self.workshop = maps, voice, workshop
         self.queries = QueryCoordinator(self.query_service, maps, voice)
+        self._resources = ApplicationResources(
+            config, self.query_service, self.queries, maps, voice, workshop
+        )
+        self.management = management
+        self._cleanup: set[asyncio.Task] = set()
         self.queue: asyncio.Queue[QueuedMessage] = asyncio.Queue(settings.event_queue_size)
         self._seen: OrderedDict[tuple[str, str], float] = OrderedDict()
         self._workers: list[asyncio.Task] = []
@@ -104,18 +135,24 @@ class BotApplication:
         group = next(
             (item for item in self.config.groups if item.group_openid == message.group_openid), None
         )
-        if group is None:
-            return True
+        pending = bool(group and self.management and self.management.has_session(message))
         try:
             command = parse_command(message.content)
-            if command is None:
+            if group is None and (command is None or command.kind != CommandKind.GROUP_ID):
+                return True
+            if command is None and not (self.management and self.management.has_session(message)):
                 return True
             if (
-                command.kind in {CommandKind.QUERY, CommandKind.VOICE}
+                command is not None
+                and group is not None
+                and not pending
+                and command.kind in {CommandKind.QUERY, CommandKind.VOICE}
                 and match_server(group.servers, command.argument) is None
             ):
                 return True
         except ValueError:
+            if group is None:
+                return True
             # Recognized commands with invalid arguments get usage help from a worker.
             pass
         now = time.monotonic()
@@ -146,9 +183,34 @@ class BotApplication:
             with suppress(asyncio.CancelledError):
                 await worker
         self._workers.clear()
-        for client in (self.maps, self.voice, self.workshop):
-            if client is not None:
-                await client.close()
+        if self.management:
+            await self.management.close()
+        await self._resources.close()
+        await asyncio.gather(*self._cleanup, return_exceptions=True)
+
+    def reconfigure(
+        self,
+        config: AppConfig,
+        *,
+        maps: MapNameClient,
+        voice: HeyboxVoiceClient,
+        workshop: WorkshopClient,
+    ) -> None:
+        previous = self._resources
+        previous.retired = True
+        self.config, self.maps, self.voice, self.workshop = config, maps, voice, workshop
+        self.query_service = QueryService(config.query.timeout_seconds, config.query.concurrency)
+        self.queries = QueryCoordinator(self.query_service, maps, voice)
+        self._resources = ApplicationResources(
+            config, self.query_service, self.queries, maps, voice, workshop
+        )
+        if self.management:
+            self.management.cancel_all()
+            self.management.http = maps.http
+        if previous.users == 0:
+            task = asyncio.create_task(previous.close())
+            self._cleanup.add(task)
+            task.add_done_callback(self._cleanup.discard)
 
     async def _worker(self) -> None:
         while True:
@@ -162,7 +224,11 @@ class BotApplication:
                     logger.warning("丢弃已超出处理时限的群命令")
                     continue
                 async with asyncio.timeout(remaining):
-                    await self.handle_message(queued.message, reply)
+                    await self.handle_message(
+                        queued.message,
+                        reply,
+                        deadline=queued.received_at + self.settings.command_timeout_seconds,
+                    )
                 if reply.sent_count:
                     logger.info("群命令已回复 %s 条消息", reply.sent_count)
             except (QQAPIError, QQTransportError) as exc:
@@ -178,18 +244,34 @@ class BotApplication:
                 self.queue.task_done()
 
     async def _card(
-        self, reply: ReplySession, card: Card, *, server: ServerConfig | None = None
+        self,
+        reply: ReplySession,
+        card: Card,
+        *,
+        server: ServerConfig | None = None,
+        config: AppConfig | None = None,
     ) -> None:
         if self.settings.reply_format == "markdown":
             keyboard = (
                 link_keyboard(card.links) if card.links and self.settings.connect_buttons else None
             )
-            command = f"connect {server.address}" if server else ""
+            command = (
+                f"connect {server.address}" if server and self.settings.connect_buttons else ""
+            )
             if server and self.settings.connect_buttons:
-                url = connect_url(server, self.config.connect_base_url)
+                url = connect_url(server, (config or self.config).connect_base_url)
                 label = "进入服务器" if url else "连接指令"
                 keyboard = connection_keyboard(label, url, command=command)
-            await reply.markdown(markdown_card(card), keyboard=keyboard, fallback_text=command)
+            pages = split_text(markdown_card(card, max_bytes=100000), max_bytes=3200)
+            if len(pages) > 5 - reply.sequence:
+                await reply.text("查询结果过长，请使用页码缩小范围。")
+                return
+            for index, page in enumerate(pages):
+                await reply.markdown(
+                    page,
+                    keyboard=keyboard if index == len(pages) - 1 else None,
+                    fallback_text=command if index == len(pages) - 1 else "",
+                )
             return
         if self.renderer is None:
             raise ValueError("图片模式需要配置图片渲染器")
@@ -202,32 +284,90 @@ class BotApplication:
                 await reply.text("图片上传失败，请检查机器人富媒体接口权限后重试。")
             raise
         if card.links:
-            await reply.text("\n".join(f"{link.label}：{link.url}" for link in card.links))
+            downloads = [line for line in card.content.splitlines() if line.startswith("下载: ")]
+            if downloads:
+                await reply.text("\n".join(downloads))
 
     async def _query_server(
-        self, server: ServerConfig, group: GroupConfig, *, players: bool = True
+        self,
+        server: ServerConfig,
+        group: GroupConfig,
+        *,
+        players: bool = True,
+        resources: ApplicationResources | None = None,
     ):
-        return await self.queries.server(server, group, players=players)
+        return await (resources or self._resources).queries.server(server, group, players=players)
 
-    async def handle_message(self, message: GroupMessage, reply: ReplySession) -> None:
+    async def handle_message(
+        self, message: GroupMessage, reply: ReplySession, *, deadline: float | None = None
+    ) -> None:
+        resources = self._resources
+        resources.users += 1
+        try:
+            await self._handle_message(
+                message,
+                reply,
+                resources,
+                deadline or time.monotonic() + self.settings.command_timeout_seconds,
+            )
+        finally:
+            resources.users -= 1
+            if resources.retired and resources.users == 0:
+                await resources.close()
+
+    async def _handle_message(
+        self,
+        message: GroupMessage,
+        reply: ReplySession,
+        resources: ApplicationResources,
+        deadline: float,
+    ) -> None:
+        config = resources.config
         group = next(
-            (item for item in self.config.groups if item.group_openid == message.group_openid), None
+            (item for item in config.groups if item.group_openid == message.group_openid), None
         )
-        if group is None:
-            return
+        pending = bool(group and self.management and self.management.has_session(message))
+        management_kinds = {CommandKind.RCON, CommandKind.RESTART, CommandKind.FLASH}
+
+        async def respond():
+            await self.management.respond(
+                group,
+                message,
+                reply,
+                timeout_seconds=max(0, min(90, deadline - time.monotonic() - 5)),
+            )
+
         try:
             command = parse_command(message.content)
         except ValueError as exc:
-            await reply.text(str(exc))
+            if pending:
+                await respond()
+            elif group is not None:
+                await reply.text(str(exc))
+            return
+        if pending and (command is None or command.kind not in management_kinds):
+            await respond()
+            return
+        if command is not None and command.kind == CommandKind.GROUP_ID:
+            await reply.text(message.group_openid)
+            return
+        if group is None:
             return
         if command is None:
+            return
+        if command.kind == CommandKind.USER_ID:
+            await reply.text(message.member_openid)
+            return
+        if command.kind in management_kinds:
+            if self.management:
+                await self.management.start(command, group, message, reply)
             return
         if command.kind == CommandKind.HELP:
             await self._card(
                 reply,
                 Card(
                     title="L4D2 查询帮助",
-                    subtitle="QQ 官方机器人 · 真实服务器查询",
+                    subtitle="",
                     sections=(
                         CardSection(
                             "可用指令",
@@ -242,7 +382,22 @@ class BotApplication:
                             ),
                         ),
                     ),
-                    footer="管理操作仍在后续开发阶段；外部接口未配置时会明确提示",
+                    footer="",
+                    content="\n".join(
+                        (
+                            "查询 服务器名",
+                            "综合查询",
+                            "服务器列表",
+                            "connect IP:端口",
+                            "语音 服务器名",
+                            "设置 服务器名 指令",
+                            "重启 服务器名",
+                            "Steam 工坊链接",
+                            "QQ 闪传链接",
+                            "获取群ID",
+                            "获取用户ID",
+                        )
+                    ),
                 ),
             )
             return
@@ -251,17 +406,17 @@ class BotApplication:
             if server is None:
                 return
             status = (
-                await self.voice.query(server.name, group.hh_room_id, server.hh_channel_id)
-                if self.voice is not None
+                await resources.voice.query(server.name, group.hh_room_id, server.hh_channel_id)
+                if resources.voice is not None
                 else VoiceStatus(server.name, False, error="未配置黑盒语音客户端。")
             )
-            await self._card(reply, voice_card(status, safe_mode=self.config.safe_mode))
+            await self._card(reply, voice_card(status, safe_mode=config.safe_mode))
             return
         if command.kind == CommandKind.WORKSHOP:
-            if self.workshop is None:
+            if resources.workshop is None:
                 await reply.text("工坊查询客户端未启用，请检查运行配置。")
                 return
-            result = await self.workshop.query(command.argument)
+            result = await resources.workshop.query(command.argument)
             try:
                 card = workshop_card(result, page=command.page)
             except ValueError as exc:
@@ -271,31 +426,30 @@ class BotApplication:
             return
         if command.kind == CommandKind.OVERVIEW:
             if not group.servers:
-                await reply.text("本群尚未配置服务器。")
+                await reply.text("本群未配置任何服务器。")
                 return
             statuses = list(
                 await asyncio.gather(
-                    *(self._query_server(server, group, players=False) for server in group.servers)
+                    *(
+                        self._query_server(server, group, players=False, resources=resources)
+                        for server in group.servers
+                    )
                 )
             )
-            for offset in range(0, len(statuses), 8):
-                card = overview_card(statuses[offset : offset + 8])
-                if len(statuses) > 8:
-                    card = replace(
-                        card,
-                        title=f"服务器概览 · 第 {offset // 8 + 1} 页",
-                        footer="人数为本页统计 · L4D2 QQ BOT",
-                    )
-                await self._card(reply, card)
+            await self._card(reply, overview_card(statuses))
             return
         if command.kind == CommandKind.ADDRESSES:
             pages = max(1, (len(group.servers) + 5) // 6)
             if command.page > pages:
                 await reply.text(f"页码超出范围，当前共 {pages} 页。")
                 return
-            servers = group.servers[(command.page - 1) * 6 : command.page * 6]
+            servers = (
+                group.servers[(command.page - 1) * 6 : command.page * 6]
+                if command.page
+                else group.servers
+            )
             if not servers:
-                await reply.text("本群尚未配置服务器。")
+                await reply.text("本群未配置任何服务器。")
                 return
             await self._card(
                 reply,
@@ -308,6 +462,16 @@ class BotApplication:
                     footer=f"发送“服务器列表 {command.page + 1}”查看下一页"
                     if command.page < pages
                     else "在游戏控制台输入 connect 指令连接",
+                    content="=== 服务器列表 ===\n"
+                    + ("点击下方链接连接服务器：\n" if config.connect_base_url else "")
+                    + "\n".join(
+                        f"[{server.name}] "
+                        + (
+                            connect_url(server, config.connect_base_url)
+                            or f"connect {server.address}"
+                        )
+                        for server in servers
+                    ),
                 ),
             )
             if self.settings.reply_format == "markdown":
@@ -315,7 +479,7 @@ class BotApplication:
             lines = []
             for server in servers:
                 lines.extend([f"{server.name}：connect {server.address}"])
-                url = connect_url(server, self.config.connect_base_url)
+                url = connect_url(server, config.connect_base_url)
                 if url:
                     lines.append(url)
             await reply.text("\n".join(lines))
@@ -325,30 +489,37 @@ class BotApplication:
             server = match_server(group.servers, command.argument)
             if server is None:
                 return
-            status = await self._query_server(server, group)
+            status = await self._query_server(server, group, resources=resources)
         else:
             server = next(
                 (item for item in group.servers if item.address == command.argument), None
             )
             if server is not None:
-                status = await self._query_server(server, group)
+                status = await resources.queries.address(server.address, allow_private=True)
             else:
                 try:
-                    status = await self.query_service.query(
-                        command.argument, allow_private=self.config.query.allow_private_connect
+                    status = await resources.queries.address(
+                        command.argument, allow_private=config.query.allow_private_connect
                     )
-                    status = await self.queries.enrich_map(status)
                 except TargetNotAllowed:
                     await reply.text("临时查询仅允许公网地址；私网服务器需由维护者加入本群配置。")
                     return
         target = server or ServerConfig(name=status.alias, address=status.address)
         await self._card(
             reply,
-            server_card(status, safe_mode=self.config.safe_mode),
+            server_card(
+                status,
+                safe_mode=config.safe_mode,
+                temporary=command.kind == CommandKind.CONNECT,
+                connection_url=connect_url(target, config.connect_base_url),
+            ),
             server=target,
+            config=config,
         )
         if self.settings.reply_format == "markdown":
             return
-        url = connect_url(target, self.config.connect_base_url)
-        text = f"connect {status.address}" + (f"\n{url}" if url else "")
+        if not status.online:
+            return
+        url = connect_url(target, config.connect_base_url)
+        text = f"点击直连: {url}" if url else f"连接指令: connect {status.address}"
         await reply.connection("进入服务器", text, url, buttons=self.settings.connect_buttons)

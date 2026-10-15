@@ -17,6 +17,17 @@ def escape_text(value: str, limit: int = 200) -> str:
 
 def markdown_card(card: Card, *, connection_command: str = "", max_bytes: int = 3200) -> str:
     """Bound one message and reserve space for the connection command and footer."""
+    if card.content:
+        lines = []
+        for line in card.content.splitlines():
+            padding = line[: len(line) - len(line.lstrip())]
+            lines.append(padding + escape_text(line.lstrip(), 2400))
+        content = "\n".join(lines)
+        if len(content.encode("utf-8")) > max_bytes:
+            content = (
+                content.encode("utf-8")[: max_bytes - 3].decode("utf-8", errors="ignore") + "…"
+            )
+        return content
     ending = []
     if connection_command:
         ending.append(f"**连接指令**\n{escape_text(connection_command)}")

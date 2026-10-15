@@ -1,10 +1,10 @@
 # Docker 与 tag 发布
 
-镜像已包含 QQ 官方 WS、群回复与本地验收工具，默认执行 `run --config /app/config.json`。私人凭据与配置通过运行时注入，镜像本身不包含它们。
+镜像包含 QQ 官方 WS、群回复、密码配置页与本地验收工具，默认执行 `run --config /app/data/config.json`。私人凭据与业务配置不写入镜像。
 
 ## 启动 QQ 机器人
 
-准备好本地 `.env` 与 `config.json`，先确认群 OpenID 已填写，并替换示例服务器地址。尚不知道群 OpenID 时，可在主机先运行 `uv run l4d2-qq-bot discover`，按 README 的步骤获取。
+复制 `.env.example` 为 `.env`，填写 `L4D2_APP_ID`、`L4D2_CLIENT_SECRET`、`L4D2_WEB_PASSWORD`。首次不需要创建 config.json：机器人可在空群配置下启动。在群中发送“获取群ID”，到 `http://服务器地址:8080/` 登录并添加该 OpenID、服务器和管理员，保存立即生效。
 
 ```bash
 # --quiet 避免将 env_file 中的凭据展开打印到终端。
@@ -14,7 +14,11 @@ docker compose logs -f --tail 30 bot
 docker compose down
 ```
 
-Compose 仅挂载只读配置、注入 `.env`，使用非 root、只读根文件系统和可写 data 卷。OpenID 发现记录保存在 data 卷内。run 始终使用真实 A2S 与外部接口，原生 Markdown 卡片和“进入服务器”按钮为默认展示；在 config.json 自定义 connect_base_url。离线外观演示使用单独的 demo 命令，不能再给 run 添加 --demo-data。
+Compose 使用非 root、只读根文件系统和可写 bot-data 卷。业务配置在 `/app/data/config.json`，发现记录也在 data 卷内，重建容器不会丢失。配置页原子替换文件，不能继续挂载旧版只读的 `/app/config.json`。端口默认 8080，可通过主机的 `L4D2_WEB_PORT` 改映射；反向代理时保留 `X-Config-Password` 请求头。
+
+密码以原值存入当前浏览器 localStorage，每个配置请求直接带上密码，无 JWT。QQ 凭据和页面密码变化后重启容器；页面中的群组、服务器、黑盒、RCON 和面板设置保存后立即应用。退出页面登录会删除本浏览器保存的密码。
+
+旧版已有 config.json 时，可在 Linux / macOS 执行 `docker compose exec -T bot sh -c 'cat > /app/data/config.json' < config.json`，由容器中的 bot 用户写入，再重启 bot。旧的 rcon_password_env / panel_token_env 引用继续支持；原 AstrBot 的群号、QQ 号须人工映射为官方 OpenID。升级前可用 `docker compose cp bot:/app/data/config.json ./config.backup.local.json` 备份业务配置。不要执行 `docker compose down -v`，它会删除命名数据卷。
 
 主机和 Docker 实例只保留一份在线；WS 连接使用出站 HTTPS/WSS，A2S 使用到游戏服务器的出站 UDP。QQ 平台的沙箱成员、群事件权限及出口 IP 白名单需在应用后台满足。
 
@@ -34,7 +38,7 @@ docker cp l4d2-demo:/app/artifacts/demo ./artifacts/docker-demo
 docker rm l4d2-demo
 ```
 
-镜像采用多阶段构建、Python 3.12、冻结的 uv.lock、非 root 用户、CA 和 Noto CJK。没有内置应用凭据、私人配置或 Windows 字体。不要求开放入站端口；WS 运行需要出站 HTTPS/WSS、A2S 需要到服务器的 UDP 通信。
+镜像采用多阶段构建、Python 3.12、冻结的 uv.lock、非 root 用户、CA 和 Noto CJK。配置页使用入站 8080；WS 需要出站 HTTPS/WSS，A2S 需要到服务器的 UDP，RCON 需要相应 TCP 端口。
 
 ## GitHub Actions
 

@@ -13,12 +13,12 @@
 - 配置使用 Pydantic，QQ 凭据通过环境变量 / `.env` 提供，业务配置放在 `config.json`。
 - 不引入 AstrBot。复用上游时提取 API 客户端及领域逻辑，不保留事件装饰器、全局 logger 或插件生命周期。
 - 中文文档和面向用户的提示；标识符与类型注解使用英文；采用标准库 logging。
-- 保持模块边界，不为初始化引入数据库、管理后台或浏览器渲染服务。
+- 保持模块边界；配置页使用现有 aiohttp 与静态资源，不引入数据库或浏览器渲染服务。
 
 ## 目录职责
 
 - `__main__.py` / `cli.py`：命令行与启动。
-- `config.py`：配置模型、校验与环境变量。
+- `config.py` / `config_store.py`：配置模型、校验、环境变量与原子保存；`web.py` / `static/` 为密码配置页。
 - `domain.py`：与 QQ / AstrBot 无关的数据模型。
 - `commands.py`：纯命令解析与服务器匹配。
 - `services/`：A2S 查询、并发控制、业务编排。
@@ -32,6 +32,8 @@
 
 - 使用官方文档核实接口，不假设旧 SDK 或上游默认域名仍然有效。当前默认域名为 `https://api.bot.qq.com`。
 - WS 实现必须保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session；业务处理不得阻塞网关读取和心跳。
+- “获取群ID”是未配置群唯一允许的引导指令，只返回群 OpenID，不执行其他业务。
+- 配置页密码来自 L4D2_WEB_PASSWORD，以原值存 localStorage，每次通过 X-Config-Password 请求头鉴权；不要增加 JWT 或 Cookie。配置 API 不返回 QQ 应用 ID、密钥或页面密码。
 - 同时支持 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`，后者需 QQ 端开启“接收所有消息”；均使用 `GROUP_AND_C2C_EVENT (1<<25)`。收到消息后按指令匹配，未匹配聊天不入队、不回复，跨两种事件以群和消息 ID 去重。QQ群的 `group_openid` 和群成员 `member_openid` 都是字符串；不得当成群号 / QQ 号。未配置群不执行命令。
 - 默认 `msg_type=2`，同一请求中发送 `markdown.content` 和 `keyboard.content`，不得拆成图片消息和另一条按钮消息来代替原生卡片。用户已在真实群确认能收到原生卡片和连接按钮。
 - 按钮链接由匹配服务器的 `connect_url` 或 `connect_base_url + '/' + address` 得到，不依赖共享的“当前服务器”。基础地址由维护者自定义；无链接配置时可用明确标注的填入指令按钮。
@@ -46,10 +48,10 @@
 - 区分服务器离线、玩家列表获取失败和零玩家；超时不应显示为无人在线。
 - 服务器名 / 别名忽略空白并大小写归一；只选择唯一匹配，不能把模糊匹配用于 RCON。
 - 配置 `name` 是查询快捷名；展示名称采用 A2S 返回的真实 `server_name`，不得用快捷名覆盖。服务器名中的圆括号直接保留，不生成 QQ 会当作公式的 `\(` / `\)`。
-- 默认单服卡片不显示“已脱敏”、连接指令或查询时间，保留实际脱敏行为。连接按钮统一叫“进入服务器”；平台拒绝按钮时才补充连接指令。
+- 最新要求以原版正文为准，不额外显示“已脱敏”、快捷名说明、产品说明或查询时间；保留原版链接 / 连接指令及脱敏行为。连接按钮统一叫“进入服务器”。
 - 配置中的可信服务器允许私网；临时 `connect` 默认只允许公网目标，DNS 解析后检查并固定实际查询地址，防止访问本机或云元数据。
 - safe mode 的脱敏应覆盖图片和补充文本，短名字也不能原样泄露。
-- RCON、重启、地图安装仅对本群配置的管理员 OpenID 开放，凭据使用环境变量引用。初始化未实现这些操作时，不得宣称可用。
+- RCON、重启、地图安装仅对本群配置的管理员 OpenID 开放。服务器密码 / 面板凭据在配置页保存，旧环境变量引用继续兼容；QQ ID / 密钥与配置页密码仅从环境变量读取。
 - 实现重启 / 安装时加入明确的操作确认、会话隔离和审计；未经授权不得向真实服务器发送管理指令。
 
 ## 凭据与资源
@@ -69,6 +71,7 @@ uv run l4d2-qq-bot validate --config config.example.json
 uv run l4d2-qq-bot preview --output artifacts/server-card.png
 uv run l4d2-qq-bot discover --duration 120
 uv run l4d2-qq-bot run --config config.json
+uv run l4d2-qq-bot configure --config config.json
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest

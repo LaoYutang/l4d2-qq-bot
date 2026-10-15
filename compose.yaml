@@ -5,20 +5,23 @@ services:
     init: true
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      L4D2_CONFIG_PATH: /app/config.json
+      L4D2_APP_ID: ${L4D2_APP_ID:?请设置 QQ 机器人 AppID}
+      L4D2_CLIENT_SECRET: ${L4D2_CLIENT_SECRET:?请设置 QQ 机器人密钥}
+      L4D2_WEB_PASSWORD: ${L4D2_WEB_PASSWORD:?请设置配置界面密码}
+      L4D2_WEB_PORT: 8080
+      L4D2_CONFIG_PATH: /app/data/config.json
       L4D2_DISCOVERY_PATH: /app/data/qq-discovery.json
+    ports:
+      - "${L4D2_WEB_PORT:-8080}:8080"
     volumes:
-      - type: bind
-        source: ./config.json
-        target: /app/config.json
-        read_only: true
       - bot-data:/app/data
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
-    command: ["run", "--config", "/app/config.json"]
+    command: ["run", "--config", "/app/data/config.json"]
 
 volumes:
   bot-data:

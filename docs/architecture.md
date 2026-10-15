@@ -1,101 +1,84 @@
 # 架构与 API 约定
 
-## 目标数据流
-
-```mermaid
-flowchart LR
-    QQ[QQ 官方 WS Gateway] --> Transport[QQ 传输适配器]
-    Transport --> Queue[有界事件队列与去重]
-    Queue --> Router[命令与群权限]
-    Router --> Query[A2S 查询服务]
-    Router --> APIs[地图 / 黑盒 / 工坊 / 面板 / RCON]
-    Query --> Model[领域结果]
-    APIs --> Model
-    Model --> View[统一卡片视图]
-    View --> Markdown[原生 Markdown 与动态按钮]
-    Markdown --> Reply[OpenAPI 被动回复]
-    View --> PNG[Pillow PNG]
-    PNG --> Media[官方富媒体上传]
-    Media --> Reply
-```
-
-已实现 QQ Token / REST、WS 读取与心跳重连、群隔离、有界 worker 队列、去重、真实 A2S、地图名称、黑盒语音、Steam 工坊、原生 Markdown 与可选 PNG 被动回复。用户已在真实群确认服务器真名和实时数据正常。run 不再提供模拟数据参数；fixture 仅供本地 demo / preview 与测试。RCON / 面板管理仍待实现。
-
-## 模块边界
+## 模块与数据流
 
 ```text
-src/l4d2_qq_bot/
-  cli.py                 # validate / preview / demo / query / discover / run
-  config.py              # 环境变量与业务配置
-  domain.py              # Player / ServerStatus / Card
-  commands.py            # 纯解析，群内名称匹配
-  demo.py                # 明确标记的模拟事件验收
-  services/query.py      # 地址解析、超时、A2S
-  services/queries.py    # A2S 与地图 / 语音查询编排
-  cards/views.py         # 结果转卡片，不访问网络
-  cards/markdown.py      # 原生正文、文本转义、长度限制
-  cards/renderer.py      # PNG 渲染、字体、截断
-  qq/protocol.py         # 网关 opcode、会话状态
-  qq/client.py           # Token、REST、PNG 上传、群发送
-  qq/gateway.py          # WS 读取、心跳、恢复与退避重连
-  qq/replies.py          # msg_id / msg_seq、回复预算、按钮
-  qq/discovery.py        # 私人 OpenID 发现记录
-  runtime.py             # HTTP / WS / worker 生命周期
-  integrations/http.py   # 独立外部会话、响应上限、超时、并发
-  integrations/cache.py  # TTL / LRU、合并并发请求、显式关闭
-  integrations/maps.py   # 地图代码转真名
-  integrations/heybox.py # 黑盒真实人数、名单与昵称缓存
-  integrations/workshop.py # Steam 官方与原项目兼容解析 API
-tests/                   # 离线测试
-examples/                # 模拟群事件与配置说明
+QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部接口
+                                            ↓
+                                    原版正文 / 统一脱敏
+                                            ↓
+                                 原生 Markdown + keyboard / PNG
+
+浏览器 → 密码请求头 → config API → 校验 / 版本冲突检查 / 原子保存
+                                            ↓
+                                 新业务配置与客户端即时替换
 ```
 
-`app.py` 编排事件、命令、服务与回复；网关用非阻塞入队，队列满时保留上一序号并重连补发；业务处理与心跳分离。绘图在有锁的工作线程中执行。去重缓存最多 4096 项 / 10 分钟，队列默认 100 项、2 个 worker。原生模式不初始化 Pillow 字体。不要让 Pillow、QQ payload 或 AstrBot 类型进入 A2S 业务模型。
+- `config.py`：Pydantic 配置与环境变量；QQ 凭据和页面密码只在 Settings。
+- `config_store.py`：SHA-256 文件 revision、串行保存、同目录临时文件、fsync / os.replace。
+- `web.py`、`static/`：独立配置页与受保护 API，移除 AstrBot Page Bridge。
+- `app.py`：事件过滤、去重、队列、配置快照、指令编排和回复。
+- `services/query.py`：DNS 固定、私网策略、异步 A2S INFO / PLAYER。
+- `services/queries.py`：单服、总览、临时地址和 CLI 共用地图 / 语音编排。
+- `integrations/`：地图、黑盒、工坊、面板与 Source RCON。
+- `services/management.py`：管理员权限、确认与闪传会话、去重后的操作及审计。
+- `cards/`：领域结果转原版正文；Markdown / PNG 均使用相同正文和脱敏。
+- `qq/`：Token、OpenAPI、WS 状态机、被动回复序号、平台拒绝回退。
+- `runtime.py`：QQ 与外部 HTTP 会话、配置页、worker、网关及关闭流程。
 
 ## QQ 官方协议
 
-核对时间：2026-10-15。使用 `GROUP_AND_C2C_EVENT = 1 << 25`，处理 `GROUP_AT_MESSAGE_CREATE` 和 `GROUP_MESSAGE_CREATE`。全量事件需 QQ 端开启“接收所有消息”；只对匹配的指令回复，未匹配消息在入队前过滤，不存储聊天正文。两类事件使用相同的群 + 消息 ID 去重，避免重复回复。其他场景后续明确接入，不共享群配置猜测用户身份。
+保持 `GROUP_AND_C2C_EVENT = 1 << 25`，同时处理 `GROUP_AT_MESSAGE_CREATE` 与 `GROUP_MESSAGE_CREATE`。后者要求 QQ 端开启“接收所有消息”。普通聊天在入队前过滤；会话等待期间仅将同群同成员的后续输入交给该会话。群 OpenID、成员 OpenID 均为字符串，不能用群号 / QQ 号替代。
 
-- Token：POST `https://api.bot.qq.com/app/getAppAccessToken`，提交 appId / clientSecret；HTTP 200 也必须检查业务 code。使用返回的 expires_in，临过期刷新且串行合并刷新请求。
-- REST：`Authorization: QQBot {access_token}`；GET `/gateway` 获取 WS URL，不硬编码旧 WSS 地址。
-- WS：Hello(10) → Identify(2) → READY；Heartbeat(1) / ACK(11)；重连优先 Resume(6)，Reconnect(7) 重连，Invalid Session(9) 清理后重新鉴权。心跳携带最新 s，业务不得阻塞读取 ACK。
-- 群事件：原始消息 ID 在 d.id；群为 d.group_openid；用户为 d.author.member_openid。顶层事件 id 不等同于被动回复的消息 id。
-- 默认卡片：同一次 POST `/messages` 提交 `msg_type=2`、markdown.content 和 keyboard.content；不填写普通 content，不拆成图片和另一条消息。
-- 图片：POST `/v2/groups/{group_openid}/files`，`srv_send_msg=false`；返回 file_info 后 POST `/messages`，`msg_type=7`、media.file_info、msg_id、msg_seq。
-- 最新上传文档允许小文件 file_data（5M 以下），大文件走 upload_prepare → 预签名 PUT → upload_part_finish → files 合并；小 PNG 直接上传已通过真实应用群测，仅用于可选图片模式。
-- 被动回复有时效及次数限制。ReplySession 对同一消息分配递增 msg_seq、最多 5 次发送；文本按 UTF-8 字节切分，业务从入队起默认最多处理 120 秒；不会无限叠加等待提示和补充地址。网络不确定的发送不会盲目重试，明确 401 / 429 拒绝才有限重试。
+未配置群只允许“获取群ID”这一个引导指令。配置群按配置列表隔离；不能跨群使用管理员身份或服务器。相同群与消息 ID 跨事件去重 10 分钟，缓存最多 4096 项；队列默认 100 项、2 个 worker。队列满时让网关恢复补发，业务不阻塞心跳。
 
-默认使用 `L4D2_REPLY_FORMAT=markdown`、`L4D2_CONNECT_BUTTONS=true`。官方 2026-04-23 更新已对群聊 / 单聊开放自定义 Markdown，按钮仍有独立权限限制；当前测试应用已在真实群验证原生卡片底部显示按钮。使用 `keyboard.content.rows[].buttons[]`，跳转按钮 `action.type=0`、`action.data` 为该服务器的 HTTPS 连接 URL。普通按钮模板不能动态替换 URL，本实现不使用固定模板。
+Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / clientSecret；REST 使用 `Authorization: QQBot {access_token}`，`GET /gateway` 获取网关。保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session、退避重连。
 
-按钮目标优先取 `servers[].connect_url`，其次按 `connect_base_url + '/' + address` 生成。例如基础地址 `https://steam-connect.laoyutang.cn` 和服务器 `106.54.214.111:37015` 组成完整连接页 URL。目标与本次查询结果一起构造，多人并发不共享“当前服务器”。无 URL 时提供 `action.type=2` 的填入指令按钮，enter=false，明确标注用途。每个按钮文字最多 10 字符。
+默认消息为同一次 `POST /v2/groups/{group_openid}/messages` 的 `msg_type=2`，包含 `markdown.content` 和 `keyboard.content`。动态连接按钮取每服 connect_url 或 connect_base_url/address，不依赖共享“当前服务器”。
 
-原生 Markdown 复用视图层脱敏，正文限制 3200 UTF-8 字节。圆括号直接保留，避免 `\(...\)` 被 QQ 解释成公式；方括号用字符实体，避免生成公式或注入链接。单服标题来自真实 server_name，配置 name 仅为快捷名。单服卡片不显示“已脱敏”、connect 指令与查询时间，正常情况下仅挂载“进入服务器”按钮。明确的按钮权限 / URL 拒绝会说明原因并补回连接指令；明确的 Markdown 权限拒绝再回退文字。始终保留被动 msg_id，使用新 msg_seq；超时或结果不确定时不重发。
+PNG 通过 files 接口上传获得 file_info，再以 `msg_type=7` 被动发送。原消息 ID 为 d.id，每次发送递增 msg_seq，最多 5 次；长文字按 UTF-8 字节分页。平台明确拒绝按钮或 Markdown 才降级，网络结果不确定时不盲目重发。
 
-官方 SDK 旧公告表示 WS 曾计划下线，但现行文档仍提供 WS 接入。两者并存意味着必须核实具体应用的实际权限；不能仅凭文档断言“所有新机器人都能用 WS”，也不能忽略用户要求改走其他链路。
+正文采用上游字段、标点和时长；外部名称清理控制字符并转义 Markdown。圆括号保留，方括号使用实体，不生成 QQ 公式分隔符。去掉产品说明、快捷名说明及统计页脚；保留真实故障提示。详见 [原版对照](parity.md)。
 
-## 数据与外部调用
+## 配置与热更新
 
-`players=None` 表示尚未查询或获取失败；空 tuple 表示已确认零玩家。玩家数始终采用 INFO 报告，不能用 PLAYER 名单长度替代。名字在视图层清理和脱敏，原始结果不写入日志。
+`GET /api/config` 返回 config 和 revision；`POST /api/config` 提交相同结构。两个接口均要求 `X-Config-Password`，服务器使用环境变量 `L4D2_WEB_PASSWORD` 直接比较。浏览器只在 localStorage 保存原密码；退出删除它，不生成 JWT、Cookie 或服务端会话。无密码时不开放 API，静态登录页不含配置数据。
 
-本地 `query` 在 DNS 解析后检查目标地址并使用解析出的 IP 发 UDP，请求全程有超时；未经显式允许不访问本机 / 私网。群机器人允许配置中可信地址走私网，临时查询继续遵守公网限制。
+QQ AppID / AppSecret 不进入 AppConfig、磁盘业务配置或 Web API。黑盒凭据、每服 RCON 密码、面板凭据由配置页管理；旧环境变量引用仍兼容。API 使用 no-store，错误不输出敏感输入，访问日志不记录请求头或正文。
 
-地图查询保留上游 GET `map_name_url/map_code` 纯文本协议，成功结果缓存 1 小时，并发同图合并。失败返回 A2S 实际地图代码，不生成猜测名称。
+保存先完成 Pydantic 校验，再检查文件 revision；冲突返回 409。临时文件以 0600 创建，在同目录原子替换，Docker 必须挂载可写目录，不能使用只读的单文件 bind mount。
 
-外部 API 与 QQ 使用独立 ClientSession，外部请求并发默认 4、单次超时 5 秒、响应最多 1 MiB，拒绝重定向且不记录响应体。黑盒 Token 只通过请求级 token header 提供。人数使用每次频道查询的真实 user_ids；字段缺失是失败，不视作零人。房间昵称分页每页 100、最多 20 页，缓存 10 分钟；名单失败仍保留真实人数。语音失败不改变 A2S 的在线状态。
+运行时替换 ApplicationResources。每条命令持有自己的配置 / 客户端快照，在途查询完成后再关闭旧缓存；新命令立即使用新配置。地图 API、黑盒凭据或工坊地址改变后创建新客户端，缓存不会跨接口混用。配置变化清除待确认管理会话。
 
-工坊默认请求 Steam GetPublishedFileDetails 和 GetCollectionDetails。真实详情响应可能给合集返回 file_url 且缺少类型字段，因此使用合集接口确认类型，不能根据 file_url 判断单品。合集默认最多取前 20 项，每页一项；私有 / 删除条目保留不可访问状态，空下载地址保留元信息。自定义 workshop_api_url 时兼容原项目 `POST [ID]` JSON 协议。工坊和下载链接只展示，不下载 / 安装文件。RCON 与面板操作未实现。
+## 查询与外部 API
 
-## 依据
+所有网络操作有超时。外部 API 使用独立于 QQ 的共享 aiohttp 会话，有并发上限和 1 MiB 响应上限，拒绝重定向，不输出响应体或凭据。缓存有 TTL、容量上限、并发合并和显式关闭。
 
-- [参考项目](https://github.com/LaoYutang/l4d2-with-astrbot)（核对版本及 API 改写来源见 [NOTICE](../NOTICE.md)）
-- [访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
-- [事件与 WebSocket](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/interface-framework/event-emit.html)
-- [群事件字段](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)
-- [群消息全量模式与免 @ 前提](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)
-- [群富媒体上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html)
-- [群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
-- [原生按钮、自定义权限与跳转字段](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)
-- [原生 Markdown 格式与 2026 能力开放说明](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
-- [2026 API 域名变更](https://bot.q.qq.com/wiki/develop/api-v2/changelog.html)
-- [官方 SDK 旧 WS 公告](https://github.com/tencent-connect/botgo#注意事项)
-- [Steam 官方工坊详情与合集接口](https://partner.steamgames.com/doc/webapi/ISteamRemoteStorage)
+A2S 区分 INFO 失败、PLAYER 失败和真正空名单。players=None 为未知；空 tuple 为已确认的空名单。人数以 INFO 为准，不使用名单长度替代。临时地址在 DNS 解析后检查所有结果并固定实际 IP，默认仅公网；配置服为维护者信任的地址，可访问私网。
+
+地图统一使用 `GET {map_name_url}/{map_code}`，2 秒超时，UTF-8 文本，成功缓存 3600 秒；失败不缓存并返回原代码。同客户端服务所有群、单服、总览和临时 connect；CLI 也使用相同 QueryCoordinator / MapNameClient。
+
+黑盒沿用上游频道、房间 API 和 token 请求头。频道人数实时查询；昵称缓存 600 秒、每页 100、最多 20 页。字段缺失和失败不能视作零人；昵称失败仍保留真实人数。
+
+工坊默认 GetPublishedFileDetails / GetCollectionDetails，用合集接口确认类型。也支持原版 `workshop_api_url` POST 数字 ID 数组；children 合集保序，兼容解析 API 的可下载父项保留。默认最多 20 项，原版正文聚合展示；显式页码展示单项。缺下载 URL 保留元信息，不猜测链接。
+
+面板沿用 `POST /download/link/parse`（JSON url）与 `POST /download/add`（表单 url / filename / referer），使用该服 `Authorization: Bearer {token}`。解析与添加分别 60 / 30 秒，无自动重试。只接受面板标记支持且扩展名为 .vpk/.zip/.rar/.7z 的文件，文件名去路径、清理控制字符。
+
+Source RCON 使用 TCP，认证后才发送指令，检查包大小、请求 ID 和结束标记，合并分包结果并限制响应量，总超时 15 秒。_restart 在成功写入后返回原版发送文案，不把发送失败报告成重启成功。
+
+## 管理会话
+
+会话键为 group_openid + member_openid，最多 64 个、30 秒过期。等待期间其他输入取消操作；新的管理请求替换本成员会话。超时通知复用原被动回复上下文，关闭时取消定时器和任务。
+
+RCON / 重启要求本群 admin_openids、完整精确服务器名 / 别名与明确确认。闪传先选本群有面板凭据的服务器，解析后列出文件，选择序号 / 多选 / 全部即确认提交。执行前重新核对权限和配置，配置变化停止尚未提交的任务。
+
+任务提交受命令剩余处理预算限制，保留回复时间；已提交、失败、未提交分别如实汇总，状态不明确的 POST 不自动重试。审计记录动作和摘要标识，不记录命令正文、凭据或完整 OpenID。
+
+## 协议依据
+
+- [上游源码与归属](../NOTICE.md)
+- [QQ 访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
+- [QQ 群消息事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)
+- [QQ 群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
+- [QQ Markdown / 按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)
+- [Steam 工坊接口](https://partner.steamgames.com/doc/webapi/ISteamRemoteStorage)

@@ -27,7 +27,12 @@ class MapNameClient:
             return code
 
     async def _fetch(self, code: str) -> str:
-        raw = await self.http.read("GET", f"{self.base_url}/{quote(code, safe='')}", max_bytes=4096)
+        raw = await self.http.read(
+            "GET",
+            f"{self.base_url}/{quote(code, safe='')}",
+            max_bytes=4096,
+            timeout_seconds=2.0,
+        )
         try:
             result = raw.decode("utf-8-sig").strip()
         except UnicodeDecodeError:
