@@ -36,12 +36,20 @@ def test_native_preserves_offline_and_unknown_player_states():
     assert "获取失败或未开放" in content and "人数: 4/16" in content
 
 
-async def test_simultaneous_queries_keep_button_targets_in_the_same_single_message():
+@pytest.mark.parametrize("with_voice", [False, True])
+async def test_simultaneous_queries_keep_button_targets_in_the_same_single_message(with_voice):
     client = AsyncMock()
     config = sample_config()
     config.connect_base_url = "https://steam-connect.example.test"
+    if with_voice:
+        config.groups[0].servers[0].voice_connect_url = "https://voice.example.test/invite/1"
     config.groups[0].servers.append(
-        ServerConfig(name="对抗服", address="203.0.113.20:27016", aliases=["2服"])
+        ServerConfig(
+            name="对抗服",
+            address="203.0.113.20:27016",
+            aliases=["2服"],
+            voice_connect_url="https://voice.example.test/invite/2" if with_voice else "",
+        )
     )
     renderer = AsyncMock()
     queries = AsyncMock()
@@ -70,11 +78,74 @@ async def test_simultaneous_queries_keep_button_targets_in_the_same_single_messa
         assert "connect " not in payload["markdown"]["content"]
         assert "查询时间" not in payload["markdown"]["content"]
         assert "已脱敏" not in payload["markdown"]["content"]
-        button = payload["keyboard"]["content"]["rows"][0]["buttons"][0]
+        buttons = payload["keyboard"]["content"]["rows"][0]["buttons"]
+        assert len(buttons) == (2 if with_voice else 1)
+        button = buttons[0]
         assert button["render_data"]["label"] == "进入服务器"
         assert button["action"]["data"] == f"https://steam-connect.example.test/{address}"
+        if with_voice:
+            assert buttons[1]["render_data"]["label"] == "进入语音"
+            assert buttons[1]["action"]["data"] == f"https://voice.example.test/invite/{index}"
+            assert buttons[1]["action"]["type"] == 0
+            assert buttons[0]["id"] != buttons[1]["id"]
+            assert "voice.example.test" not in payload["markdown"]["content"]
     client.upload_png.assert_not_awaited()
     renderer.render.assert_not_called()
+    await app.close()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "buttons_enabled", "rejected"),
+    [
+        ("", True, False),
+        ("https://connect.example.test", False, False),
+        ("https://connect.example.test", True, True),
+    ],
+)
+async def test_voice_link_survives_missing_game_url_and_button_fallback(
+    base_url, buttons_enabled, rejected
+):
+    client = AsyncMock()
+    if rejected:
+        client.send_group.side_effect = [QQAPIError(200, 304057), None]
+    config = sample_config()
+    config.connect_base_url = base_url
+    url = "https://voice.example.test/invite?room=fixture&channel=one#join"
+    config.groups[0].servers[0].voice_connect_url = url
+    query = AsyncMock()
+    query.query.return_value = sample_statuses()[0]
+    app = BotApplication(
+        client,
+        config,
+        Settings(_env_file=None, connect_buttons=buttons_enabled),
+        None,
+        AsyncMock(),
+        query_service=query,
+    )
+    message = GroupMessage.from_payload(sample_event())
+    try:
+        await app.handle_message(message, ReplySession(client, message))
+        calls = client.send_group.await_args_list
+        assert len(calls) == (2 if rejected else 1)
+        assert all(call.args[1] == message.message_id for call in calls)
+        payload = calls[-1].args[3]
+        if buttons_enabled and not rejected:
+            buttons = payload["keyboard"]["content"]["rows"][0]["buttons"]
+            assert buttons[0]["render_data"]["label"] == "连接指令"
+            assert buttons[0]["action"]["data"] == "connect 203.0.113.10:27015"
+            assert buttons[0]["action"]["type"] == 2
+            assert buttons[0]["action"]["enter"] is False
+            assert buttons[1]["render_data"]["label"] == "进入语音"
+            assert buttons[1]["action"]["data"] == url
+        else:
+            assert "keyboard" not in payload
+            assert f"进入语音: {url}" in payload["markdown"]["content"]
+            if rejected:
+                assert "按钮被平台拒绝" in payload["markdown"]["content"]
+                assert "connect 203.0.113.10:27015" in payload["markdown"]["content"]
+        query.query.assert_awaited_once()
+    finally:
+        await app.close()
 
 
 def test_server_title_preserves_parentheses_without_qq_math_delimiters():

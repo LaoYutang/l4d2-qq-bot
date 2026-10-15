@@ -28,6 +28,7 @@
           "aliases": ["合作服", "主服"],
           "address": "127.0.0.1:27015",
           "hh_channel_id": "",
+          "voice_connect_url": "",
           "rcon_password": "",
           "panel_url": "",
           "panel_token": ""
@@ -35,7 +36,8 @@
         {
           "name": "2服",
           "aliases": ["对抗服"],
-          "address": "127.0.0.1:27016"
+          "address": "127.0.0.1:27016",
+          "voice_connect_url": ""
         }
       ]
     }

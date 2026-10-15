@@ -42,6 +42,7 @@ class ServerConfig(ConfigModel):
     address: str
     aliases: list[str] = Field(default_factory=list, max_length=20)
     hh_channel_id: str = ""
+    voice_connect_url: str = Field(default="", max_length=512)
     rcon_password: str = Field(default="", repr=False, max_length=4096)
     panel_url: str = ""
     panel_token: str = Field(default="", repr=False, max_length=4096)
@@ -64,6 +65,29 @@ class ServerConfig(ConfigModel):
     @classmethod
     def valid_panel_url(cls, value: str) -> str:
         return base_url(value)
+
+    @field_validator("voice_connect_url")
+    @classmethod
+    def valid_voice_connect_url(cls, value: str) -> str:
+        if not value:
+            return ""
+        if len(value.encode("utf-8")) > 512:
+            raise ValueError("语音连接 URL 不能超过 512 字节")
+        if any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("语音连接 URL 不能包含空白或控制字符")
+        try:
+            parsed = urlsplit(value)
+            _ = parsed.port
+        except ValueError:
+            raise ValueError("语音连接 URL 格式无效") from None
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("语音连接 URL 必须是有效且不含账号密码的 HTTP(S) 链接")
+        return value
 
     @field_validator("aliases")
     @classmethod

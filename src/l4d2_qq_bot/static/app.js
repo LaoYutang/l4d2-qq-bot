@@ -95,6 +95,7 @@ function createEmptyServer() {
     name: "",
     address: "",
     hh_channel_id: "",
+    voice_connect_url: "",
     aliases: [],
     rcon_password: "",
     panel_url: "",
@@ -144,6 +145,7 @@ function normalizeConfig(rawConfig) {
             name: asText(server.name),
             address: asText(server.address),
             hh_channel_id: asText(server.hh_channel_id),
+            voice_connect_url: asText(server.voice_connect_url),
             rcon_password: asText(server.rcon_password),
             panel_url: asText(server.panel_url),
             panel_token: asText(server.panel_token),
@@ -769,6 +771,11 @@ function createServerCard(server, groupIndex, serverIndex) {
         <input type="text" data-field="hh_channel_id" autocomplete="off" placeholder="Channel ID" />
       </label>
       <label class="field">
+        <span class="field-label">语音连接 URL</span>
+        <span class="field-hint">填写语音邀请链接后，单服查询卡片显示“进入语音”按钮，可留空</span>
+        <input type="url" data-field="voice_connect_url" maxlength="512" autocomplete="off" placeholder="https://…" />
+      </label>
+      <label class="field">
         <span class="field-label">RCON 密码</span>
         <span class="field-hint">用于设置和重启指令，可留空</span>
         <span class="secret-control">
@@ -808,7 +815,7 @@ function createServerCard(server, groupIndex, serverIndex) {
     field.append(title, note, input);
     card.querySelector(".server-fields").append(field);
   }
-  const fieldNames = ["name", "address", "hh_channel_id", "rcon_password", "panel_url",
+  const fieldNames = ["name", "address", "hh_channel_id", "voice_connect_url", "rcon_password", "panel_url",
     "panel_token", "aliases"];
   for (const fieldName of fieldNames) {
     const input = card.querySelector(`input[data-field="${fieldName}"]`);
@@ -923,6 +930,19 @@ function validateConfig() {
           if (!['http:', 'https:'].includes(url.protocol)) throw new Error("protocol");
         } catch {
           add(`服务器 ${name || serverIndex + 1} 的面板地址必须是有效的 HTTP/HTTPS URL`, `${prefix}.panel_url`);
+        }
+      }
+      const voiceUrl = server.voice_connect_url.trim();
+      if (voiceUrl) {
+        try {
+          const url = new URL(voiceUrl);
+          if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password
+              || /\s/.test(voiceUrl) || /[\u0000-\u001f\u007f]/.test(voiceUrl)) {
+            throw new Error("url");
+          }
+          if (new TextEncoder().encode(voiceUrl).length > 512) throw new Error("length");
+        } catch {
+          add(`服务器 ${name || serverIndex + 1} 的语音连接必须是有效且不含账号密码的 HTTP/HTTPS URL（最多 512 字节）`, `${prefix}.voice_connect_url`);
         }
       }
     });
