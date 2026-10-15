@@ -275,7 +275,7 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
     message = GroupMessage.from_payload(sample_event())
     card = replace(
         server_card(sample_statuses()[0]),
-        content="服务器: 合作服\n在线玩家:\n" + "- 幸*者 (1:00)\n" * 200,
+        content="服务器: 合作服\n在线玩家:\n" + "幸*者 (1:00)\n" * 200,
     )
     try:
         await app._card(ReplySession(client, message), card, server=config.groups[0].servers[0])

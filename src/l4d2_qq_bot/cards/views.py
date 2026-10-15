@@ -140,7 +140,7 @@ def server_text(
     if status.players:
         lines.append("在线玩家:")
         lines.extend(
-            f"- {player_name(p.name, safe_mode=safe_mode)} ({duration_text(p.duration_seconds)})"
+            f"{player_name(p.name, safe_mode=safe_mode)} ({duration_text(p.duration_seconds)})"
             for p in status.players
         )
     elif status.players is None:

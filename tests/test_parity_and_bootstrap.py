@@ -56,7 +56,7 @@ def test_upstream_reply_contract_has_no_product_explanations():
     )
     assert server_card(status, connection_url="https://connect.example/1").content == (
         "服务器: 真实服(测试)\n地图: 死亡中心 | 旅馆\n人数: 1/8 (🎧2)\n延迟: 42ms\n"
-        "\n在线玩家:\n- 幸*者 (1:00:00:01)\n点击直连: https://connect.example/1"
+        "\n在线玩家:\n幸*者 (1:00:00:01)\n点击直连: https://connect.example/1"
     )
     temporary = server_card(status, temporary=True).content
     assert "地址: 203.0.113.10:27015" in temporary and "🎧" not in temporary
