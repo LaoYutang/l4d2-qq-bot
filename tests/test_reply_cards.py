@@ -132,15 +132,11 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
         ("https://connect.example", False, []),
     ],
 )
-async def test_address_list_uses_buttons_or_copyable_commands(
-    base_url, buttons, expected_urls
-):
+async def test_address_list_uses_buttons_or_copyable_commands(base_url, buttons, expected_urls):
     client = AsyncMock()
     config = sample_config()
     config.connect_base_url = base_url
-    config.groups[0].servers.append(
-        ServerConfig(name="对抗服", address="203.0.113.20:27015")
-    )
+    config.groups[0].servers.append(ServerConfig(name="对抗服", address="203.0.113.20:27015"))
     app = BotApplication(
         client, config, Settings(_env_file=None, connect_buttons=buttons), None, Mock()
     )

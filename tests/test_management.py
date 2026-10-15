@@ -84,9 +84,7 @@ async def test_rcon_executes_immediately_with_exact_target_and_admin_permission(
         ("fixture-rcon", 15, "超时取消"),
     ],
 )
-async def test_rcon_does_not_execute_without_password_or_time(
-    password, timeout_seconds, expected
-):
+async def test_rcon_does_not_execute_without_password_or_time(password, timeout_seconds, expected):
     service = ManagementService(AsyncMock(), AsyncMock())
     config = group()
     config.servers[0].rcon_password = password
