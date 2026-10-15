@@ -14,7 +14,7 @@ docker compose logs -f --tail 30 bot
 docker compose down
 ```
 
-Compose 使用非 root、只读根文件系统和可写 bot-data 卷。业务配置在 `/app/data/config.json`，发现记录也在 data 卷内，重建容器不会丢失。配置页原子替换文件，不能继续挂载旧版只读的 `/app/config.json`。端口默认 8080，可通过主机的 `L4D2_WEB_PORT` 改映射；反向代理时保留 `X-Config-Password` 请求头。
+Compose 使用镜像默认的 root 用户、只读根文件系统和可写 bot-data 卷。业务配置在 `/app/data/config.json`，发现记录也在 data 卷内，重建容器不会丢失。配置页原子替换文件，不能继续挂载旧版只读的 `/app/config.json`。端口默认 8080，可通过主机的 `L4D2_WEB_PORT` 改映射；反向代理时保留 `X-Config-Password` 请求头。
 
 密码以原值存入当前浏览器 localStorage，每个配置请求直接带上密码，无 JWT。QQ 凭据和页面密码变化后重启容器；页面中的群组、服务器、黑盒、RCON 和面板设置保存后立即应用。退出页面登录会删除本浏览器保存的密码。
 
@@ -25,6 +25,24 @@ Compose 使用非 root、只读根文件系统和可写 bot-data 卷。业务配
 旧版已有 config.json 时，可在 Linux / macOS 执行 `docker compose exec -T bot sh -c 'cat > /app/data/config.json' < config.json`，由容器中的 bot 用户写入，再重启 bot。RCON 密码 / 面板凭据只读取直接配置的值，连接 URL 统一使用全局基础地址；旧的 rcon_password_env、panel_token_env、connect_url 字段不再生效，读取时忽略、保存后清除。原 AstrBot 的群号、QQ 号须人工映射为官方 OpenID。升级前可用 `docker compose cp bot:/app/data/config.json ./config.backup.local.json` 备份业务配置。不要执行 `docker compose down -v`，它会删除命名数据卷。
 
 主机和 Docker 实例只保留一份在线；WS 连接使用出站 HTTPS/WSS，A2S 使用到游戏服务器的出站 UDP。QQ 平台的沙箱成员、群事件权限及出口 IP 白名单需在应用后台满足。
+
+## Sealos 持久化存储
+
+使用单实例，将可写持久化存储挂载到 `/app/data`，保留 `L4D2_CONFIG_PATH=/app/data/config.json`。无需通过平台的“配置文件”功能创建 config.json，首次保存时程序会自动创建。
+
+镜像默认以 root（UID / GID `0:0`）运行，兼容平台创建的 root 所有存储卷，无需编辑 Pod YAML 设置用户或 fsGroup。挂载方式见 [Sealos 持久化存储文档](https://sealos.io/docs/guides/app-deploy/persistent-volume/)。
+
+旧镜像以 UID 10001 运行，遇到 root 所有且其他用户不可写的存储卷时会保存失败。需要使用包含此修复的新发布镜像，在 Sealos 更新镜像版本并重新部署，保留现有 `/app/data` 挂载即可。
+
+若仍失败，在应用容器终端检查实际运行身份、目录权限和磁盘空间，并确认挂载卷可写：
+
+```sh
+id
+ls -ldn /app/data
+df -h /app/data
+```
+
+保存使用同目录临时文件和原子替换，因此整个 `/app/data` 目录都需要可写，仅修改 config.json 文件权限不够。root 用户同样无法写入只读挂载或已满的存储卷。
 
 ## 本地镜像
 
@@ -42,7 +60,7 @@ docker cp l4d2-demo:/app/artifacts/demo ./artifacts/docker-demo
 docker rm l4d2-demo
 ```
 
-镜像采用多阶段构建、Python 3.12、冻结的 uv.lock、非 root 用户、CA 和 Noto CJK。配置页使用入站 8080；WS 需要出站 HTTPS/WSS，A2S 需要到服务器的 UDP，RCON 需要相应 TCP 端口。
+镜像采用多阶段构建、Python 3.12、冻结的 uv.lock、默认 root 用户、CA 和 Noto CJK。配置页使用入站 8080；WS 需要出站 HTTPS/WSS，A2S 需要到服务器的 UDP，RCON 需要相应 TCP 端口。
 
 ## GitHub Actions
 
