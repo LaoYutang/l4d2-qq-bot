@@ -131,11 +131,10 @@ async def test_heybox_real_http_names_are_cached_but_counts_remain_live(local_se
             status = await voice.query("1服", "room", "channel")
             assert status.count == 2 and status.names == ("幸存者", "Alice")
         assert counts == 2 and names == 1
-        content = " ".join(
-            line for section in voice_card(status).sections for line in section.lines
-        )
-        assert "幸存者" not in content and "Alice" not in content
-        assert "幸*者" in content and "A***e" in content
+        card = voice_card(status)
+        content = " ".join(line for section in card.sections for line in section.lines)
+        assert "幸存者" in content and "Alice" in content
+        assert "- 幸存者" in card.content and "- Alice" in card.content
     finally:
         await voice.close()
 

@@ -438,7 +438,7 @@ class BotApplication:
             )
             await self._card(
                 reply,
-                voice_card(status, safe_mode=config.safe_mode),
+                voice_card(status),
                 plain_text=status.count in (None, 0),
             )
             return
