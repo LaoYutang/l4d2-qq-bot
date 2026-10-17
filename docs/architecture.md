@@ -84,6 +84,10 @@ A2S 区分 INFO 失败、PLAYER 失败和真正空名单。players=None 为未�
 
 Source RCON 使用 TCP，认证后才发送指令，检查包大小、请求 ID 和结束标记，合并分包结果并限制响应量，总超时 15 秒。_restart 在成功写入后返回原版发送文案，不把发送失败报告成重启成功。
 
+RCON 回复先合并全部协议包，再遮蔽服务器密码，按完整回复（含结果前缀）的 UTF-8 编码长度选择呈现：不超过 3500 字节只发一条普通文字，超过时将完整结果编码为 UTF-8 TXT，只发一个 `msg_type=7` 文件卡片。该阈值复用普通文字分段边界，仅改变 RCON 的输出选择，不改变普通查询或 Markdown 分页。空结果沿用无文本响应提示。
+
+TXT 固定使用安全文件名 `rcon-result.txt`，通过官方 `POST /v2/groups/{group_openid}/files` 的 `file_type=4`、`file_name`、Base64 `file_data` 在内存直接上传；`srv_send_msg=false`，取得 `file_info` 后再使用原被动回复的 `msg_id` 与递增 `msg_seq` 发送。应用额外限制 TXT 为 1 MiB，低于官方直接上传的 5M 限制；现有 RCON 正文上限仍为 256 KiB。不落盘、不上传公开 URL、不记录正文或凭据。文件失败只记录阶段及异常类型并尝试一条简短通知，发送超时时明确状态未确认，不回退成多条正文，不重新执行或重放 RCON。接口依据：[官方群文件上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html)（2026-10-09 更新）。
+
 ## 管理会话
 
 会话键为 group_openid + member_openid，最多 64 个、30 秒过期。等待期间其他输入取消操作；新的管理请求替换本成员会话。超时通知复用原被动回复上下文，关闭时取消定时器和任务。

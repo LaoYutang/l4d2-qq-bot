@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from ..domain import CardLink
-from .client import QQAPIError, QQClient
+from .client import QQAPIError, QQClient, QQTransportError
 from .protocol import GroupMessage
 
 logger = logging.getLogger(__name__)
@@ -14,9 +14,10 @@ KEYBOARD_REJECTIONS = {"304057"}
 URL_REJECTIONS = {"304003", "40054010"}
 BUTTONS_PER_ROW = 2
 MAX_LINK_BUTTONS = 5 * BUTTONS_PER_ROW
+TEXT_MESSAGE_MAX_BYTES = 3500
 
 
-def split_text(text: str, max_bytes: int = 3500) -> list[str]:
+def split_text(text: str, max_bytes: int = TEXT_MESSAGE_MAX_BYTES) -> list[str]:
     chunks: list[str] = []
     current = ""
     size = 0
@@ -113,6 +114,24 @@ class ReplySession:
             raise ValueError("文字过长，请缩小查询范围或使用服务器列表页码")
         for chunk in chunks:
             await self.send({"msg_type": 0, "content": chunk})
+
+    async def text_file(self, text: str) -> None:
+        """Send one result file, or one short failure notice, without replaying the operation."""
+        if self.sequence >= 5:
+            raise ValueError("已达到本条群消息的回复上限")
+        stage = "上传"
+        try:
+            media = await self.client.upload_txt(self.message.group_openid, text)
+            stage = "发送"
+            await self.send({"msg_type": 7, "media": {"file_info": media.file_info}})
+        except (QQAPIError, QQTransportError, ValueError) as exc:
+            # Result text, credentials and exception messages must never enter logs.
+            logger.warning("RCON 结果文件%s失败（%s）", stage, type(exc).__name__)
+            if stage == "发送" and isinstance(exc, QQTransportError):
+                notice = "RCON 结果文件发送状态未确认，未重新执行指令。"
+            else:
+                notice = f"RCON 结果文件{stage}失败，未重新执行指令。"
+            await self.text(notice)
 
     async def image(self, png: bytes) -> None:
         media = await self.client.upload_png(self.message.group_openid, png)
