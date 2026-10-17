@@ -137,7 +137,9 @@ def server_text(
     elif status.players is None:
         lines.append("玩家列表获取失败或未开放，在线人数以服务器报告为准。")
     else:
-        lines.append("当前无玩家在线。")
+        lines.append(
+            "当前无玩家在线。" if status.player_count == 0 else "服务器未返回可显示的玩家名称。"
+        )
     if connection_url is not None:
         lines.append(
             f"点击直连: {connection_url}"
@@ -188,7 +190,7 @@ def overview_text(statuses: list[ServerStatus], *, demo: bool = False) -> str:
         lines.extend(
             [
                 f"{prefix} {truncate_width(clean_text(status.server_name), 20)}",
-                f"{padding}{players}{' ' * ((player_width - len(players)) * 2)}{voice}",
+                f"{padding}👥 {players}{' ' * ((player_width - len(players)) * 2)}{voice}",
                 f"{padding}{truncate_width(name, 40)}",
             ]
         )

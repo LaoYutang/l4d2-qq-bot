@@ -82,3 +82,24 @@ def match_server(servers: list[ServerConfig], name: str) -> ServerConfig | None:
         if target in {normalize_name(item) for item in [server.name, *server.aliases]}
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def server_query_command(server: ServerConfig, servers: list[ServerConfig]) -> str:
+    """Round-trip a configured selector instead of guessing from the A2S title."""
+    for selector in (server.name, *server.aliases):
+        if any(ord(char) < 32 for char in selector):
+            continue
+        text = f"查询 {selector}"
+        try:
+            command = parse_command(text)
+        except ValueError:
+            continue
+        if (
+            command is not None
+            and command.kind == CommandKind.QUERY
+            and match_server(servers, command.argument) is server
+        ):
+            return text
+    # Names ending in “语音” may all select the voice command. CONNECT is an
+    # existing query command and keeps an otherwise unaddressable target exact.
+    return f"connect {server.address}"

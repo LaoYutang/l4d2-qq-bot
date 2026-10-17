@@ -57,17 +57,22 @@ def markdown_text(
             (is_overview and line.startswith(("服务器: ", "人数: ")))
             or (is_server and line.startswith(("地址: ", "地图: ", "人数: ", "延迟: ")))
         )
-        if is_player or is_voice_member or (is_overview and padding):
+        is_player_notice = is_server and line in {
+            "当前无玩家在线。",
+            "服务器未返回可显示的玩家名称。",
+            "玩家列表获取失败或未开放，在线人数以服务器报告为准。",
+        }
+        if is_player or is_player_notice or is_quote:
+            if blocks and blocks[-1].startswith("> "):
+                blocks[-1] += f"\n> {text}"
+            else:
+                blocks.append(f"> {text}")
+        elif is_voice_member or (is_overview and padding):
             item = f"- {text}"
             if blocks and blocks[-1].startswith("- "):
                 blocks[-1] += f"\n{item}"
             else:
                 blocks.append(item)
-        elif is_quote:
-            if blocks and blocks[-1].startswith("> "):
-                blocks[-1] += f"\n> {text}"
-            else:
-                blocks.append(f"> {text}")
         elif not padding and short and line.startswith("["):
             blocks.append(f"**{text}**")
         elif first and short:

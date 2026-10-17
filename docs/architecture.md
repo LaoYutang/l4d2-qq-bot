@@ -34,13 +34,13 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 
 Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / clientSecret；REST 使用 `Authorization: QQBot {access_token}`，`GET /gateway` 获取网关。保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session、退避重连。
 
-查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、离线、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。游戏连接按钮统一由 connect_base_url/address 生成，不支持单服 URL 覆盖，不依赖共享“当前服务器”。
+查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗；离线单服在 Markdown 模式下使用简短卡片及查询按钮。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。游戏连接按钮统一由 connect_base_url/address 生成，不支持单服 URL 覆盖，不依赖共享“当前服务器”。
 
 连接按钮每行最多 2 个，每张卡片最多 5 行、10 个。服务器列表超过 10 台时按配置顺序分卡片发送；指定页码仍每页 6 台。
 
 单服在线查询标题只显示真实服务器名，不加 Emoji 或“服务器:”前缀；地图、人数、延迟仍放在同一个引用块中，临时查询的地址也放入该引用块。游戏按钮使用“🎮 进入服务器”，缺少链接时使用“🎮 连接指令”。Emoji 属于按钮文字；QQ 公开接口未提供替换客户端自带链接图标的字段，客户端可能仍显示链接标记。
 
-在线玩家在 Markdown 格式层转换为无序列表，条目间仅换行，保留脱敏昵称和在线时长；长名单分页后继承列表上下文。玩家文本仍完整转义，连接指令、链接及无人 / 未知提示不作为列表条目；PNG 和普通文字继续使用原正文。
+在线玩家在 Markdown 格式层转换为连续引用，条目间仅换行，保留脱敏昵称和在线时长；长名单分页后继承引用上下文。玩家文本仍完整转义，无人和名单不可用提示也使用引用并区别含义；连接指令和链接不归入玩家引用。PNG 和普通文字继续使用原正文。
 
 语音查询的在线成员使用紧凑无序列表，分页后继续使用列表样式。仅保留名单原文的列表标记，昵称继续转义、清理控制字符并显示原名；人数、无人在线和昵称获取失败提示沿用原样，PNG 和普通文字使用原正文。
 
@@ -104,3 +104,15 @@ RCON / 重启要求本群 admin_openids 与完整精确服务器名 / 别名。�
 - [QQ 群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
 - [QQ Markdown 格式与自定义正文](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
 - [QQ Markdown / 按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)
+
+## 查询刷新指令按钮
+
+综合卡每服人数行增加 👥，保留地图无序列表和顶部汇总。单服在线玩家、无玩家和名单不可用提示使用视觉 Markdown 引用，续页继续引用并保留清理、转义、脱敏和时长；不是 message_reference 消息引用。离线单服在 Markdown 模式下也发送简短卡片，其他错误/提示仍为普通文字。
+
+综合卡末页附有人服务器快捷查询按钮和独立一行“再次查询”（综合查询）；单服末页追加“🌐 综合查询”（综合查询）和“🔍 再次查询”（该服查询选择器）。按钮为 action.type=2、enter=true、reply=false、permission.type=2，data 不包含显示 emoji 或前导 /。名称/别名必须经过现有解析器与原 ServerConfig 的往返校验；没有可用查询选择器时使用该地址的既有 connect 指令。每张卡片独立构造目标，不使用共享当前服务器。旧卡片按点击时的当前群配置解析普通指令，不承诺跨配置更名或名称重用仍绑定旧实体。
+
+沿用连接按钮开关、每行 2 个/最多 10 个及仅末页附键盘的规则；平台明确拒绝后保留可复制指令，不重新查询。QQ 群接口对 enter 的字段描述与示例矛盾，群聊自动发送效果尚未真实验证，本实现不改用回调事件。
+
+重复保护放在现有群消息 worker：同群、同成员、同类查询和规范化目标，查询进行中或完成后 2 秒内直接略过重复请求，不重复查询或回复。最近记录最多 4096 个，过期惰性清理；不同目标、成员、群不互相抑制，管理会话及其他命令沿用原路径。按钮消息与手输相同，二者使用同一保护。
+
+综合卡的快捷目标从原配置与对应查询结果配对筛选，只包含 INFO 查询成功且报告人数大于 0 的服务器，保留配置顺序；不把数组序号当成服号，不用截断后的 A2S 名称选服。查询按钮每行 2 个，末行仅“再次查询”，最多 8 台加 1 个刷新按钮（5 行）。超过 8 台时保留全部正文并明确提示快捷按钮仅显示前 8 台，其余请手动发送查询命令；长正文仍按现有字节预算分页，全部按钮只附最后一页。长按钮标签显示省略号，data 保留完整选择器。

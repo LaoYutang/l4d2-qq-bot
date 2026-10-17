@@ -5,14 +5,14 @@ import logging
 import time
 from collections import OrderedDict
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from urllib.parse import quote
 
 from .cards.markdown import markdown_card, markdown_text_pages
 from .cards.renderer import CardRenderer
 from .cards.views import clean_text, overview_card, server_card, voice_card
-from .commands import Command, CommandKind, match_server, parse_command
+from .commands import Command, CommandKind, match_server, parse_command, server_query_command
 from .config import AppConfig, GroupConfig, ServerConfig, Settings
 from .domain import Card, CardLink, CardSection, VoiceStatus
 from .integrations.heybox import HeyboxVoiceClient
@@ -26,6 +26,7 @@ from .qq.replies import (
     ReplySession,
     connection_keyboard,
     link_keyboard,
+    query_keyboard,
     split_text,
 )
 from .services.management import ManagementService
@@ -33,6 +34,10 @@ from .services.queries import QueryCoordinator
 from .services.query import QueryService, TargetNotAllowed
 
 logger = logging.getLogger(__name__)
+QUERY_COOLDOWN_SECONDS = 2.0
+QUERY_RECENT_LIMIT = 4096
+OVERVIEW_QUERY_BUTTONS = 4 * BUTTONS_PER_ROW
+QueryKey = tuple[str, str, str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +129,8 @@ class BotApplication:
         self._cleanup: set[asyncio.Task] = set()
         self.queue: asyncio.Queue[QueuedMessage] = asyncio.Queue(settings.event_queue_size)
         self._seen: OrderedDict[tuple[str, str], float] = OrderedDict()
+        self._query_active: set[QueryKey] = set()
+        self._query_recent: OrderedDict[QueryKey, float] = OrderedDict()
         self._workers: list[asyncio.Task] = []
         # Fonts are cached by Pillow. Keep the renderer in one thread at a time.
         self._render_lock = asyncio.Lock()
@@ -213,10 +220,36 @@ class BotApplication:
             self._cleanup.add(task)
             task.add_done_callback(self._cleanup.discard)
 
+    def _query_key(self, message: GroupMessage) -> QueryKey | None:
+        group = next(
+            (item for item in self.config.groups if item.group_openid == message.group_openid), None
+        )
+        if group is None or (self.management and self.management.has_session(message)):
+            return None
+        try:
+            command = parse_command(message.content)
+        except ValueError:
+            return None
+        if command is None:
+            return None
+        if command.kind == CommandKind.OVERVIEW:
+            target = ""
+        elif command.kind == CommandKind.QUERY:
+            server = match_server(group.servers, command.argument)
+            if server is None:
+                return None
+            target = server.address
+        elif command.kind == CommandKind.CONNECT:
+            target = command.argument
+        else:
+            return None
+        return message.group_openid, message.member_openid, command.kind.value, target
+
     async def _worker(self) -> None:
         while True:
             queued = await self.queue.get()
             reply = ReplySession(self.client, queued.message)
+            query_key = None
             try:
                 remaining = self.settings.command_timeout_seconds - (
                     time.monotonic() - queued.received_at
@@ -224,6 +257,15 @@ class BotApplication:
                 if remaining <= 0:
                     logger.warning("丢弃已超出处理时限的群命令")
                     continue
+                key = self._query_key(queued.message)
+                if key is not None:
+                    now = time.monotonic()
+                    while self._query_recent and next(iter(self._query_recent.values())) <= now:
+                        self._query_recent.popitem(last=False)
+                    if key in self._query_active or key in self._query_recent:
+                        continue
+                    self._query_active.add(key)
+                    query_key = key
                 async with asyncio.timeout(remaining):
                     await self.handle_message(
                         queued.message,
@@ -242,6 +284,12 @@ class BotApplication:
                 # Do not log a traceback that could contain request objects or private payloads.
                 logger.error("群命令发生未预期错误：%s", type(exc).__name__)
             finally:
+                if query_key is not None:
+                    self._query_active.discard(query_key)
+                    self._query_recent.pop(query_key, None)
+                    self._query_recent[query_key] = time.monotonic() + QUERY_COOLDOWN_SECONDS
+                    while len(self._query_recent) > QUERY_RECENT_LIMIT:
+                        self._query_recent.popitem(last=False)
                 self.queue.task_done()
 
     async def _card(
@@ -253,6 +301,8 @@ class BotApplication:
         config: AppConfig | None = None,
         fallback_text: str = "",
         plain_text: bool = False,
+        query_actions: tuple[tuple[str, str], ...] = (),
+        query_last_row: bool = False,
     ) -> None:
         if plain_text:
             content = card.content or "\n".join(
@@ -294,6 +344,14 @@ class BotApplication:
                 command = "\n".join(
                     filter(None, [command, *(f"{link.label}: {link.url}" for link in card.links)])
                 )
+            if query_actions and self.settings.connect_buttons:
+                controls = query_keyboard(query_actions, separate_last=query_last_row)
+                rows = keyboard["content"]["rows"] if keyboard else []
+                rows = [*rows, *controls["content"]["rows"]]
+                if len(rows) > 5 or sum(len(row["buttons"]) for row in rows) > MAX_LINK_BUTTONS:
+                    raise ValueError("查询卡片按钮超过单条卡片上限")
+                keyboard = {"content": {"rows": rows}}
+                command = "\n".join(filter(None, [command, *(text for _, text in query_actions)]))
             pages = (
                 markdown_text_pages(card.content)
                 if card.content
@@ -472,7 +530,36 @@ class BotApplication:
                     )
                 )
             )
-            await self._card(reply, overview_card(statuses))
+            actions = []
+            eligible = [
+                server
+                for server, status in zip(group.servers, statuses, strict=True)
+                if status.online and status.player_count > 0
+            ]
+            for server in eligible[:OVERVIEW_QUERY_BUTTONS]:
+                text = server_query_command(server, group.servers)
+                selector = text.removeprefix("查询 ") if text.startswith("查询 ") else server.name
+                label = f"查询{selector}"
+                if len(label) > 10:
+                    label = label[:9] + "…"
+                actions.append((label, text))
+            card = overview_card(statuses)
+            if (
+                len(eligible) > OVERVIEW_QUERY_BUTTONS
+                and self.settings.reply_format == "markdown"
+                and self.settings.connect_buttons
+            ):
+                card = replace(
+                    card,
+                    content=card.content + "\n\n快捷查询按钮仅显示前 8 台有人服务器，"
+                    "其余服务器请手动发送“查询 服务器名”。",
+                )
+            await self._card(
+                reply,
+                card,
+                query_actions=(*actions, ("再次查询", "综合查询")),
+                query_last_row=True,
+            )
             return
         if command.kind == CommandKind.ADDRESSES:
             pages = max(1, (len(group.servers) + 5) // 6)
@@ -546,22 +633,31 @@ class BotApplication:
                     await reply.text("临时查询仅允许公网地址；私网服务器需由维护者加入本群配置。")
                     return
         target = server or ServerConfig(name=status.alias, address=status.address)
+        card = server_card(
+            status,
+            safe_mode=config.safe_mode,
+            temporary=command.kind == CommandKind.CONNECT,
+            connection_url=(
+                None
+                if self.settings.reply_format == "markdown" and self.settings.connect_buttons
+                else connect_url(target, config.connect_base_url)
+            ),
+            voice_connection_url=target.voice_connect_url,
+        )
+        if not status.online and self.settings.reply_format == "markdown":
+            card = replace(card, content=f"{card.title}\n\n{card.content}")
+        retry_command = (
+            server_query_command(target, group.servers)
+            if command.kind == CommandKind.QUERY
+            else f"connect {target.address}"
+        )
         await self._card(
             reply,
-            server_card(
-                status,
-                safe_mode=config.safe_mode,
-                temporary=command.kind == CommandKind.CONNECT,
-                connection_url=(
-                    None
-                    if self.settings.reply_format == "markdown" and self.settings.connect_buttons
-                    else connect_url(target, config.connect_base_url)
-                ),
-                voice_connection_url=target.voice_connect_url,
-            ),
+            card,
             server=target,
             config=config,
-            plain_text=not status.online,
+            plain_text=not status.online and self.settings.reply_format != "markdown",
+            query_actions=(("🌐 综合查询", "综合查询"), ("🔍 再次查询", retry_command)),
         )
         if self.settings.reply_format == "markdown":
             return
