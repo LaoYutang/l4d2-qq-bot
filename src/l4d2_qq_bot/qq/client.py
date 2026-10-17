@@ -29,6 +29,11 @@ class UploadedImage:
     file_info: str
 
 
+@dataclass(frozen=True, slots=True)
+class UploadedFile:
+    file_info: str
+
+
 class QQClient:
     def __init__(
         self,
@@ -176,6 +181,27 @@ class QQClient:
         if not isinstance(file_info, str) or not file_info:
             raise QQAPIError(200, "missing_file_info")
         return UploadedImage(file_info)
+
+    async def upload_txt(self, group_openid: str, text: str) -> UploadedFile:
+        """Upload a bounded UTF-8 result directly to QQ without a public URL or disk file."""
+        raw = text.encode("utf-8")
+        # RCON already limits output to 256 KiB; keep this below the API's 5M direct-upload cap.
+        if not raw or len(raw) > 1024 * 1024:
+            raise ValueError("TXT 内容必须非空且不超过 1 MiB")
+        data = await self.request(
+            "POST",
+            self.group_path(group_openid, "files"),
+            {
+                "file_type": 4,
+                "file_name": "rcon-result.txt",
+                "file_data": base64.b64encode(raw).decode("ascii"),
+                "srv_send_msg": False,
+            },
+        )
+        file_info = data.get("file_info")
+        if not isinstance(file_info, str) or not file_info:
+            raise QQAPIError(200, "missing_file_info")
+        return UploadedFile(file_info)
 
     async def send_group(
         self,

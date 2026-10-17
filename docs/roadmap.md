@@ -4,6 +4,8 @@
 
 ## 已实现
 
+- RCON 合并多包后按脱敏完整回复的 UTF-8 字节数选择呈现：不超过 3500 字节单条文字，超过时只发送一个内存上传的 TXT 文件卡片。上传/发送失败明确通知且不重放指令；普通查询与 Markdown 分页保持。使用离线 mock 验证，真实 QQ 文件权限及显示效果待部署后联调。
+
 - Python 3.12+、asyncio、aiohttp、python-a2s、Pillow；独立于 AstrBot。
 - QQ Token、WebSocket 状态机、心跳、恢复、重连；全量群消息与 @ 事件、去重及有界 worker 队列。
 - 真实单服 / 临时 connect / 综合查询、原生 Markdown 与动态连接按钮、可选 PNG。
