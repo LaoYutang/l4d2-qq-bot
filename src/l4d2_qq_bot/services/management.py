@@ -12,9 +12,11 @@ from ..integrations.http import ExternalHTTP
 from ..integrations.panel import PanelClient, PanelError, file_size, selection
 from ..integrations.rcon import RCONClient
 from ..qq.protocol import GroupMessage
-from ..qq.replies import TEXT_MESSAGE_MAX_BYTES, ReplySession
+from ..qq.replies import ReplySession
 
 logger = logging.getLogger(__name__)
+
+RCON_TEXT_MAX_CHARS = 200
 
 
 @dataclass
@@ -183,8 +185,8 @@ class ManagementService:
         text = (result.replace(secret, "***") if secret else result) or (
             "指令已发送。服务器无文本响应。"
         )
-        # Count the complete redacted reply, including the response prefix, in UTF-8 bytes.
-        if len(text.encode("utf-8")) <= TEXT_MESSAGE_MAX_BYTES:
+        # Count Unicode characters in the complete redacted reply, including its prefix.
+        if len(text) <= RCON_TEXT_MAX_CHARS:
             await reply.text(text)
         else:
             await reply.text_file(text)

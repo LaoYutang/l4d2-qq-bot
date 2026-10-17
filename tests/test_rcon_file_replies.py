@@ -37,15 +37,15 @@ async def execute(case, result):
 @pytest.mark.parametrize(
     "result",
     [
-        "a" * 3499,
-        "a" * 3500,
-        "中" * 1166 + "ab",
-        "😀" * 875,
+        "a" * 199,
+        "a" * 200,
+        "中" * 200,
+        "😀" * 200,
         "指令已发送。服务器无文本响应。",
         "RCON 执行出错: 服务器返回了无效的 RCON 数据",
         "操作超时：连接服务器耗时过长，请检查服务器状态或网络连接。",
         "",
-        "服务器响应: " + "a" * (3500 - len("服务器响应: ".encode())),
+        "服务器响应: " + "a" * (200 - len("服务器响应: ")),
     ],
     ids=[
         "ascii-below",
@@ -74,10 +74,10 @@ async def test_short_boundary_and_empty_results_send_one_plain_message(rcon_case
 @pytest.mark.parametrize(
     "result",
     [
-        "a" * 3501,
-        "中" * 1167,
-        "😀" * 875 + "a",
-        "服务器响应: " + "a" * (3501 - len("服务器响应: ".encode())),
+        "a" * 201,
+        "中" * 201,
+        "😀" * 201,
+        "服务器响应: " + "a" * (201 - len("服务器响应: ")),
     ],
     ids=["ascii-over", "chinese-over", "emoji-over", "prefix-over"],
 )
@@ -93,7 +93,7 @@ async def test_long_utf8_results_send_only_one_file_card(rcon_case, result):
     )
 
 
-@pytest.mark.parametrize("prefix_length, expected_type", [(3497, 0), (3498, 7)])
+@pytest.mark.parametrize("prefix_length, expected_type", [(197, 0), (198, 7)])
 async def test_redaction_happens_before_threshold_and_file_upload(
     rcon_case, prefix_length, expected_type
 ):
@@ -128,7 +128,7 @@ async def test_file_failures_send_one_short_notice_without_reexecuting(
     notice = calls[-1].args[3]
     assert notice["msg_type"] == 0
     assert "未重新执行指令" in notice["content"]
-    assert len(notice["content"].encode("utf-8")) < 3500
+    assert len(notice["content"]) <= 200
     assert "fixture-rcon" not in caplog.text and "fixture-private-body" not in caplog.text
     assert (
         "fixture-rcon" not in notice["content"] and "fixture-private-body" not in notice["content"]
