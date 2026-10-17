@@ -85,6 +85,30 @@ def link_keyboard(links: tuple[CardLink, ...]) -> dict[str, Any]:
     return {"content": {"rows": rows}}
 
 
+def query_keyboard(
+    commands: tuple[tuple[str, str], ...], *, separate_last: bool = False
+) -> dict[str, Any]:
+    """Command buttons send ordinary query text; display emojis stay in labels."""
+    if len(commands) > MAX_LINK_BUTTONS:
+        raise ValueError("查询按钮超过单条卡片上限")
+    buttons = []
+    for index, (label, command) in enumerate(commands):
+        button = connection_keyboard(label, "", command=command)["content"]["rows"][0]["buttons"][0]
+        button["id"] = f"query_{index}"
+        button["action"].update(enter=True, reply=False)
+        buttons.append(button)
+    main = buttons[:-1] if separate_last else buttons
+    rows = [
+        {"buttons": main[index : index + BUTTONS_PER_ROW]}
+        for index in range(0, len(main), BUTTONS_PER_ROW)
+    ]
+    if separate_last and buttons:
+        rows.append({"buttons": buttons[-1:]})
+    if len(rows) > 5:
+        raise ValueError("查询按钮超过单条卡片行数上限")
+    return {"content": {"rows": rows}}
+
+
 class ReplySession:
     def __init__(self, client: QQClient, message: GroupMessage):
         self.client = client

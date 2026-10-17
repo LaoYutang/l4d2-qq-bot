@@ -50,8 +50,8 @@ def test_native_player_list_is_compact_and_escapes_player_markup():
     )
     assert (
         "## 在线玩家:\n\n"
-        "- 地图: &#91;玩家&#93;\\* (1:30)\n"
-        "- \\- &lt;qqbot-at-everyone /&gt; (2:00:00)"
+        "> 地图: &#91;玩家&#93;\\* (1:30)\n"
+        "> \\- &lt;qqbot-at-everyone /&gt; (2:00:00)"
     ) in content
     assert "<qqbot-at-everyone" not in content
     assert "\n\n**点击直连: https://connect.example.test/1**" in content

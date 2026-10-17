@@ -60,7 +60,7 @@ def test_overview_player_count_and_map_are_compact_list_items():
     )
     content = markdown_card(overview_card([online, sample_statuses()[1]]))
     assert content.startswith("# L4D2 服务器概览\n\n> 服务器: 1/2 在线\n> 人数: 3/8")
-    assert ("**&#91;1服&#93; 真实服务器(测试)**\n\n- 3/8   🎧2\n- &#91;地图&#93;\\*") in content
+    assert ("**&#91;1服&#93; 真实服务器(测试)**\n\n- 👥 3/8   🎧2\n- &#91;地图&#93;\\*") in content
     assert "**&#91;对抗服&#93; 离线或无法连接**" in content
     assert sum(line.startswith("- ") for line in content.splitlines()) == 2
 
@@ -320,13 +320,13 @@ async def test_paginated_card_keeps_its_button_on_the_last_reply():
         assert all("keyboard" not in call.args[3] for call in calls[:-1])
         assert (
             sum(
-                line.startswith("- ")
+                line.startswith("> ")
                 for call in calls
                 for line in call.args[3]["markdown"]["content"].splitlines()
             )
             == 200
         )
-        assert all(call.args[3]["markdown"]["content"].startswith("- ") for call in calls[1:])
+        assert all(call.args[3]["markdown"]["content"].startswith("> ") for call in calls[1:])
         button = calls[-1].args[3]["keyboard"]["content"]["rows"][0]["buttons"][0]
         assert button["render_data"]["label"] == "🎮 进入服务器"
         assert button["action"]["data"] == "https://connect.example/203.0.113.10:27015"
