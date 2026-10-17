@@ -16,6 +16,8 @@ from ..qq.replies import ReplySession
 
 logger = logging.getLogger(__name__)
 
+RCON_TEXT_MAX_CHARS = 200
+
 
 @dataclass
 class PendingOperation:
@@ -180,7 +182,14 @@ class ManagementService:
         self._audit(message, "rcon", not result.startswith(("RCON 执行出错", "操作超时")))
         # A misconfigured server may echo the password; never forward it to QQ.
         secret = server.rcon_password
-        await reply.text(result.replace(secret, "***") if secret else result)
+        text = (result.replace(secret, "***") if secret else result) or (
+            "指令已发送。服务器无文本响应。"
+        )
+        # Count Unicode characters in the complete redacted reply, including its prefix.
+        if len(text) <= RCON_TEXT_MAX_CHARS:
+            await reply.text(text)
+        else:
+            await reply.text_file(text)
 
     async def respond(
         self,

@@ -4,6 +4,8 @@
 
 ## 已实现
 
+- RCON 合并多包后按完整脱敏回复的 Unicode 字符数（含前缀、空格和换行，中文每字计 1）选择呈现：不超过 200 字符单条文字，超过时只发送一个内存上传的 TXT 文件卡片。上传/发送失败明确通知且不重放指令；普通查询与 Markdown 分页保持。使用离线 mock 验证，真实 QQ 文件权限及显示效果待部署后联调。
+
 - Python 3.12+、asyncio、aiohttp、python-a2s、Pillow；独立于 AstrBot。
 - QQ Token、WebSocket 状态机、心跳、恢复、重连；全量群消息与 @ 事件、去重及有界 worker 队列。
 - 真实单服 / 临时 connect / 综合查询、原生 Markdown 与动态连接按钮、可选 PNG。
