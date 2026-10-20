@@ -584,6 +584,7 @@ class BotApplication:
                     url = connect_url(server, config.connect_base_url)
                     command_line = f"[{server.name}] connect {server.address}"
                     if use_buttons and url:
+                        lines.append(f"[{server.name}] {server.address}")
                         links.append(CardLink(clean_text(server.name, 10) or "服务器", url))
                         fallback.append(command_line)
                     else:

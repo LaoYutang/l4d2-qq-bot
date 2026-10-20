@@ -168,7 +168,10 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
         ("https://connect.example", False, []),
     ],
 )
-async def test_address_list_uses_buttons_or_copyable_commands(base_url, buttons, expected_urls):
+@pytest.mark.parametrize("command", ["服务器地址", "服务器列表", "连接指令"])
+async def test_address_list_uses_buttons_or_copyable_commands(
+    base_url, buttons, expected_urls, command
+):
     client = AsyncMock()
     config = sample_config()
     config.connect_base_url = base_url
@@ -176,7 +179,7 @@ async def test_address_list_uses_buttons_or_copyable_commands(base_url, buttons,
     app = BotApplication(
         client, config, Settings(_env_file=None, connect_buttons=buttons), None, Mock()
     )
-    message = replace(GroupMessage.from_payload(sample_event()), content="服务器地址")
+    message = replace(GroupMessage.from_payload(sample_event()), content=command)
     try:
         await app.handle_message(message, ReplySession(client, message))
         client.send_group.assert_awaited_once()
@@ -190,7 +193,12 @@ async def test_address_list_uses_buttons_or_copyable_commands(base_url, buttons,
         assert [button["action"]["data"] for button in actual] == expected_urls
         expected_labels = ["合作服", "对抗服"] if len(expected_urls) == 2 else []
         assert [button["render_data"]["label"] for button in actual] == expected_labels
-        assert len(visible_lines(content)) == 1 + 2 - len(expected_urls)
+        prefix = "" if expected_urls else "connect "
+        assert visible_lines(content) == [
+            "服务器列表",
+            f"[合作服] {prefix}203.0.113.10:27015",
+            f"[对抗服] {prefix}203.0.113.20:27015",
+        ]
     finally:
         await app.close()
 
@@ -213,9 +221,15 @@ async def test_address_list_keeps_all_button_targets_within_platform_limits(coun
         assert [call.args[2] for call in calls] == list(range(1, len(calls) + 1))
         targets = []
         labels = []
-        for call in calls:
+        for index, call in enumerate(calls):
             assert call.args[1] == message.message_id and call.args[3]["msg_type"] == 2
-            assert call.args[3]["markdown"]["content"] == "# 服务器列表"
+            content = call.args[3]["markdown"]["content"]
+            batch = config.groups[0].servers[index * 10 : (index + 1) * 10]
+            assert visible_lines(content) == [
+                "服务器列表",
+                *(f"[{server.name}] {server.address}" for server in batch),
+            ]
+            assert len(content.encode("utf-8")) <= 3200
             rows = call.args[3]["keyboard"]["content"]["rows"]
             assert 1 <= len(rows) <= 5
             assert all(1 <= len(row["buttons"]) <= 2 for row in rows)
@@ -227,6 +241,98 @@ async def test_address_list_keeps_all_button_targets_within_platform_limits(coun
             f"https://connect.example/203.0.113.{index}:27015" for index in range(1, count + 1)
         ]
         assert labels == [f"{index}服" for index in range(1, count + 1)]
+    finally:
+        await app.close()
+
+
+@pytest.mark.parametrize(
+    "address", ["203.0.113.42:27016", "l4d2-server.example.test:28015", "[2001:db8::42]:27017"]
+)
+async def test_address_list_displays_game_endpoint_without_exposing_other_urls(address):
+    client = AsyncMock()
+    config = sample_config()
+    config.connect_base_url = "https://connect.example.test/custom/join"
+    server = ServerConfig(
+        name="合作服",
+        address=address,
+        panel_url="https://internal-panel.example.test:8443/manage",
+        panel_token="fixture-panel-token",
+        rcon_password="fixture-rcon-password",
+        voice_connect_url="https://voice.example.test/invite",
+    )
+    config.groups[0].servers = [server]
+    app = BotApplication(client, config, Settings(_env_file=None), None, Mock())
+    message = replace(GroupMessage.from_payload(sample_event()), content="服务器地址")
+    try:
+        await app.handle_message(message, ReplySession(client, message))
+        client.send_group.assert_awaited_once()
+        payload = client.send_group.await_args.args[3]
+        assert visible_lines(payload["markdown"]["content"]) == [
+            "服务器列表",
+            f"[合作服] {address}",
+        ]
+        assert "https://" not in payload["markdown"]["content"]
+        assert payload["keyboard"]["content"]["rows"][0]["buttons"][0]["action"]["data"] == (
+            f"https://connect.example.test/custom/join/{address}"
+        )
+        assert all(
+            value not in str(payload)
+            for value in (
+                server.panel_url,
+                server.panel_token,
+                server.rcon_password,
+                server.voice_connect_url,
+            )
+        )
+    finally:
+        await app.close()
+
+
+@pytest.mark.parametrize("rejection_codes", [(304057,), (304036, 304036)])
+async def test_address_list_rejection_keeps_game_address_and_copyable_command(rejection_codes):
+    client = AsyncMock()
+    client.send_group.side_effect = [*(QQAPIError(200, code) for code in rejection_codes), None]
+    config = sample_config()
+    config.connect_base_url = "https://connect.example.test"
+    app = BotApplication(client, config, Settings(_env_file=None), None, Mock())
+    message = replace(GroupMessage.from_payload(sample_event()), content="服务器地址")
+    try:
+        await app.handle_message(message, ReplySession(client, message))
+        calls = client.send_group.await_args_list
+        assert [call.args[2] for call in calls] == list(range(1, len(rejection_codes) + 2))
+        assert all(call.args[1] == message.message_id for call in calls)
+        payload = calls[-1].args[3]
+        assert "keyboard" not in payload
+        if len(rejection_codes) == 1:
+            assert payload["msg_type"] == 2
+            content = payload["markdown"]["content"]
+            lines = visible_lines(content)
+        else:
+            assert payload["msg_type"] == 0
+            content = payload["content"]
+            lines = content.splitlines()
+        assert "[合作服] 203.0.113.10:27015" in lines
+        assert "[合作服] connect 203.0.113.10:27015" in lines
+        assert "被平台拒绝" in content
+        assert "https://" not in content
+    finally:
+        await app.close()
+
+
+async def test_address_list_without_servers_does_not_invent_an_address_or_button():
+    client = AsyncMock()
+    config = sample_config()
+    config.groups[0].servers = []
+    config.connect_base_url = "https://connect.example.test"
+    app = BotApplication(client, config, Settings(_env_file=None), None, Mock())
+    message = replace(GroupMessage.from_payload(sample_event()), content="服务器地址")
+    try:
+        await app.handle_message(message, ReplySession(client, message))
+        client.send_group.assert_awaited_once()
+        assert client.send_group.await_args.args[3] == {
+            "msg_type": 0,
+            "content": "本群未配置任何服务器。",
+        }
     finally:
         await app.close()
 
