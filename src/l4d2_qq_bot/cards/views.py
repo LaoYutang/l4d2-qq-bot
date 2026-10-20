@@ -43,8 +43,14 @@ def server_card(
 ) -> Card:
     label = "模拟数据 · " if demo else ""
     links = (CardLink("🎧 进入语音", voice_connection_url),) if voice_connection_url else ()
+    content = server_text(
+        status,
+        safe_mode=safe_mode,
+        temporary=temporary,
+        connection_url=connection_url,
+        demo=demo,
+    )
     if not status.online:
-        target = clean_text(status.address if temporary else status.alias)
         return Card(
             title=clean_text(status.alias),
             subtitle=f"{label}离线 / 无法连接 · 未获取到真实服务器名",
@@ -52,7 +58,7 @@ def server_card(
             sections=(CardSection("连接状态", (status.error or "服务器暂不可达，请稍后重试。",)),),
             footer="",
             links=links,
-            content=f"无法连接到服务器 {target}，可能服务器离线或网络问题。",
+            content=content,
         )
     if status.players is None:
         player_lines = ("玩家列表获取失败或未开放，在线人数以服务器报告为准。",)
@@ -96,13 +102,7 @@ def server_card(
         + voice_sections,
         footer="",
         links=links,
-        content=server_text(
-            status,
-            safe_mode=safe_mode,
-            temporary=temporary,
-            connection_url=connection_url,
-            demo=demo,
-        ),
+        content=content,
     )
 
 
@@ -114,11 +114,17 @@ def server_text(
     connection_url: str | None,
     demo: bool = False,
 ) -> str:
-    lines = [clean_text(status.server_name) or "服务器未返回名称"]
-    if demo:
-        lines.insert(0, "模拟数据")
-    if temporary:
+    lines = []
+    if status.online:
+        lines.append(clean_text(status.server_name) or "服务器未返回名称")
+        if demo:
+            lines.insert(0, "模拟数据")
+    if status.address:
         lines.append(f"地址: {status.address}")
+    if not status.online:
+        target = clean_text(status.address if temporary else status.alias)
+        lines.append(f"无法连接到服务器 {target}，可能服务器离线或网络问题。")
+        return "\n".join(lines)
     lines.append(f"地图: {clean_text(status.map_name or status.map_code)}")
     voice = f" (🎧{status.voice_count})" if status.voice_count is not None and not temporary else ""
     lines.extend(

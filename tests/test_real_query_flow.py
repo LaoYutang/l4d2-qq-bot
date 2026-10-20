@@ -101,6 +101,7 @@ async def test_real_udp_and_map_http_produce_one_native_card_with_true_name(
         content = payload["markdown"]["content"]
         assert payload["msg_type"] == 2
         assert content.startswith("# 真正的服务器(测试)")
+        assert f"\n\n> 地址: {address}\n> 地图: 死亡中心：旅馆" in content
         assert "死亡中心：旅馆" in content and "人数: 2/8" in content
         assert "真实玩家" not in content and r"真\*\*家" in content
         assert "模拟" not in content and "已脱敏" not in content

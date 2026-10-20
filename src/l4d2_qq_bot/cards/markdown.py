@@ -38,7 +38,7 @@ def markdown_text(
     in_player_list = player_list_continuation
     lines = content.splitlines()
     is_overview = overview_continuation or "L4D2 服务器概览" in lines[:2]
-    is_server = not is_overview and any(line.startswith("地图: ") for line in lines[:4])
+    is_server = not is_overview and any(line.startswith(("地址: ", "地图: ")) for line in lines[:4])
     is_voice = voice_list_continuation or _is_voice_content(lines)
     for line in lines:
         padding = line[: len(line) - len(line.lstrip())]

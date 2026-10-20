@@ -63,7 +63,8 @@ def test_upstream_reply_contract_has_no_product_explanations():
         voice_count=2,
     )
     assert server_card(status, connection_url="https://connect.example/1").content == (
-        "真实服(测试)\n地图: 死亡中心 | 旅馆\n人数: 1/8 (🎧2)\n延迟: 42ms\n"
+        "真实服(测试)\n地址: 203.0.113.10:27015\n地图: 死亡中心 | 旅馆\n"
+        "人数: 1/8 (🎧2)\n延迟: 42ms\n"
         "\n在线玩家:\n幸*者 (1:00:00:01)\n点击直连: https://connect.example/1"
     )
     temporary = server_card(status, temporary=True).content

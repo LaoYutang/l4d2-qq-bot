@@ -43,7 +43,7 @@ def visible_lines(content):
 )
 def test_native_layout_keeps_the_existing_visible_body(card):
     content = markdown_card(card)
-    assert content.startswith("# ")
+    assert content.startswith("> 地址: " if card.content.startswith("地址: ") else "# ")
     assert visible_lines(content) == [
         line.strip() for line in card.content.splitlines() if line.strip()
     ]
@@ -141,7 +141,7 @@ async def test_command_replies_use_cards_for_results_and_plain_text_for_notices(
             assert "工坊" not in payload["markdown"]["content"]
             assert "查询服务器名语音" in payload["markdown"]["content"]
             assert "服务器名语音" in payload["markdown"]["content"]
-        if command.startswith("connect "):
+        if command in {"查询1服", "connect 203.0.113.10:27015"}:
             assert (
                 "> 地址: 203.0.113.10:27015\n> 地图: 死亡中心 · 旅馆\n> 人数: 3/8\n> 延迟: 42ms"
             ) in payload["markdown"]["content"]

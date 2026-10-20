@@ -646,7 +646,7 @@ class BotApplication:
             voice_connection_url=target.voice_connect_url,
         )
         if not status.online and self.settings.reply_format == "markdown":
-            card = replace(card, content=f"{card.title}\n\n{card.content}")
+            card = replace(card, content=f"{card.title}\n{card.content}")
         retry_command = (
             server_query_command(target, group.servers)
             if command.kind == CommandKind.QUERY
