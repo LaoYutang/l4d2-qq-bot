@@ -454,7 +454,16 @@ class BotApplication:
         if command is None:
             return
         if command.kind == CommandKind.USER_ID:
-            await reply.text(message.member_openid)
+            member_openid = (
+                message.mentioned_member_openid(command.argument)
+                if command.argument
+                else message.member_openid
+            )
+            await reply.text(
+                member_openid
+                or "未获取到指定成员的用户ID，请通过 QQ 的 @ 功能只选择一位群成员；"
+                "若仍无法获取，请让对方发送“获取用户ID”。"
+            )
             return
         if command.kind in management_kinds:
             if self.management:
@@ -497,7 +506,7 @@ class BotApplication:
                             "重启 服务器名",
                             "QQ 闪传链接",
                             "获取群ID",
-                            "获取用户ID",
+                            "获取用户ID / 获取用户ID @某人",
                         )
                     ),
                 ),

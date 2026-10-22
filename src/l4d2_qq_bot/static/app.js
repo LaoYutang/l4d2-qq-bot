@@ -551,7 +551,7 @@ function createGroupCard(group, groupIndex) {
         </label>
         <div class="admin-editor">
           <span class="field-label">管理员用户</span>
-          <span class="field-hint">在群中发送“获取用户ID”后复制结果；支持回车或逗号批量添加。每个 ID 可单独填写备注，方便区分成员。</span>
+          <span class="field-hint">在群中发送“获取用户ID”查询自己，或发送“获取用户ID @某人”查询指定成员，再复制结果；请通过 QQ 的 @ 功能选择成员。支持回车或逗号批量添加，每个 ID 可单独填写备注。</span>
           <div class="tag-input-row">
             <input class="admin-input" type="text" autocomplete="off" placeholder="输入成员 OpenID" />
             <button class="button button-secondary button-small add-admin" type="button">添加</button>

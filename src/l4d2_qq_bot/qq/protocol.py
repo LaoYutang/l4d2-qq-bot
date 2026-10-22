@@ -1,11 +1,15 @@
 """State transitions shared by the live gateway and offline tests."""
 
 import math
+import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any
 
 GROUP_AND_C2C_INTENT = 1 << 25
+USER_MENTION = re.compile(
+    r"<@!?([A-Za-z0-9_-]+)>|<qqbot-at-user\s+id=([\"'])([A-Za-z0-9_-]+)\2\s*/>"
+)
 
 
 class OpCode(IntEnum):
@@ -89,11 +93,62 @@ class GatewayState:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupMention:
+    # Prefer the explicit member OpenID; id is also used by QQ's mention marker.
+    identifiers: tuple[str, ...]
+    names: tuple[str, ...]
+    is_member: bool
+
+    @classmethod
+    def from_payload(cls, data: Any) -> "GroupMention | None":
+        if not isinstance(data, dict):
+            return None
+        identifiers = tuple(
+            value
+            for key in ("member_openid", "user_openid", "id")
+            if isinstance(value := data.get(key), str) and re.fullmatch(r"[A-Za-z0-9_-]+", value)
+        )
+        if not identifiers:
+            return None
+        names = tuple(
+            value
+            for key in ("nickname", "username")
+            if isinstance(value := data.get(key), str) and value
+        )
+        is_member = (
+            not data.get("bot")
+            and not data.get("is_you")
+            and data.get("scope", "single") == "single"
+        )
+        return cls(identifiers, names, is_member)
+
+
+@dataclass(frozen=True, slots=True)
 class GroupMessage:
     message_id: str
     group_openid: str
     member_openid: str
     content: str
+    mentions: tuple[GroupMention, ...] = ()
+
+    def mentioned_member_openid(self, target: str) -> str | None:
+        """Resolve one complete @ target without guessing from a bare name or QQ number."""
+        if match := USER_MENTION.fullmatch(target):
+            identifier = match[1] or match[3]
+            if identifier.casefold() in {"all", "everyone"}:
+                return None
+            mentions = [item for item in self.mentions if identifier in item.identifiers]
+            if not mentions:
+                # Older events can carry only the OpenID marker, without mentions metadata.
+                return None if self.mentions else identifier
+        else:
+            mentions = [
+                item for item in self.mentions if any(target == f"@{name}" for name in item.names)
+            ]
+        if not mentions or any(not item.is_member for item in mentions):
+            return None
+        openids = {item.identifiers[0] for item in mentions}
+        return next(iter(openids)) if len(openids) == 1 else None
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "GroupMessage | None":
@@ -115,4 +170,14 @@ class GroupMessage:
             or len(content) > 4096
         ):
             return None
-        return cls(*fields, content)
+        raw_mentions = data.get("mentions")
+        mentions = (
+            tuple(
+                mention
+                for item in raw_mentions
+                if (mention := GroupMention.from_payload(item)) is not None
+            )
+            if isinstance(raw_mentions, list)
+            else ()
+        )
+        return cls(*fields, content, mentions)

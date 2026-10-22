@@ -32,6 +32,8 @@ QQ WebSocket → 有界队列 / 去重 → 群权限与命令 → A2S / 外部�
 
 未配置群只允许“获取群ID”这一个引导指令。配置群按配置列表隔离；不能跨群使用管理员身份或服务器。相同群与消息 ID 跨事件去重 10 分钟，缓存最多 4096 项；队列默认 100 项、2 个 worker。队列满时让网关恢复补发，业务不阻塞心跳。
 
+“获取用户ID”无参数时返回发送者的 member_openid，追加单个 @ 成员时返回目标 OpenID。保留群消息 mentions 中的成员标识和名称，以 member_openid、user_openid、id 的顺序兼容读取；通过消息中的完整 `<@openid>` / `<@!openid>` 或 `<qqbot-at-user id="openid" />` 标记匹配，有结构化信息时优先使用对应成员 OpenID。显示为 `@昵称` 时仅匹配本条事件的 mentions，不按昵称跨消息查人。多目标、同名歧义、已标记的机器人 / 全体成员或无法识别的参数只回复用法提示，不回退到发送者 ID。没有 mentions 的旧事件兼容读取单个完整标记。两种群事件均支持，未配置群仍不执行；返回的 ID 不会自动加入管理员列表。
+
 Token 接口 `POST https://api.bot.qq.com/app/getAppAccessToken` 使用 appId / clientSecret；REST 使用 `Authorization: QQBot {access_token}`，`GET /gateway` 获取网关。保留 Hello、Identify、Heartbeat / ACK、READY、Resume、Reconnect、Invalid Session、退避重连。
 
 查询结果、服务器列表和帮助默认使用 `msg_type=2`，由现有正文生成原生 Markdown 标题、字段和分区。ID、未配置、错误及管理操作提示使用 `msg_type=0` 普通文本，不加标题或加粗；离线单服在 Markdown 模式下使用简短卡片及查询按钮。有按钮时，`markdown.content` 和 `keyboard.content` 在同一次 `POST /v2/groups/{group_openid}/messages` 中发送，分页时按钮仅附在最后一页。游戏连接按钮统一由 connect_base_url/address 生成，不支持单服 URL 覆盖，不依赖共享“当前服务器”。
@@ -101,6 +103,8 @@ RCON / 重启要求本群 admin_openids 与完整精确服务器名 / 别名。�
 - [上游源码与归属](../NOTICE.md)
 - [QQ 访问凭证](https://bot.q.qq.com/wiki/develop/api-v2/dev-prepare/access-token.html)
 - [QQ 群消息事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)
+- [QQ 官方 Node.js SDK 群消息 mentions 字段](https://github.com/tencent-connect/qqbot-nodejs/blob/429a0f1b798f3b0fcef3679e207dbc0469a1df2d/src/protocol/types.ts#L269-L293)（2026-10-22 核对）
+- [QQ 官方 @ 文本格式](https://github.com/tencent-connect/bot-docs/blob/645787a/docs/develop/api-v2/server-inter/message/trans/text-chain.md)
 - [QQ 群消息发送](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_messages.post.html)
 - [QQ Markdown 格式与自定义正文](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/markdown.html)
 - [QQ Markdown / 按钮](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html)

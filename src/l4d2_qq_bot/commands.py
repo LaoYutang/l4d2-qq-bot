@@ -41,6 +41,10 @@ def parse_command(content: str) -> Command | None:
         return Command(CommandKind.GROUP_ID)
     if content.casefold() in {"获取用户id", "获取我的id", "我的id"}:
         return Command(CommandKind.USER_ID)
+    if match := re.fullmatch(
+        r"获取用户id(?:\s+|(?=@|<@|<qqbot-at-))(.+)", content, flags=re.IGNORECASE | re.DOTALL
+    ):
+        return Command(CommandKind.USER_ID, match[1].strip())
     if content in {"帮助", "help"}:
         return Command(CommandKind.HELP)
     if content == "综合查询":
