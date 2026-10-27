@@ -64,11 +64,17 @@ docker rm l4d2-demo
 
 ## GitHub Actions
 
-- `.github/workflows/ci.yml`：分支与 PR 运行 Ruff、Python 3.12 / 3.13 / 3.14 测试、示例与包构建，然后进行 Docker 冒烟。
-- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发，独立执行同等的 Python 多版本检查与 Docker 冒烟。检查与 tag 格式校验通过后，发布 `linux/amd64`、`linux/arm64` 镜像到 Docker Hub 的 `laoyutang/l4d2-qq-bot`。
+- `.github/workflows/ci.yml`：分支与 PR 按当前 Docker 镜像使用的 Python 3.12 运行 Ruff、完整测试、示例与包构建，然后进行 Docker 冒烟。
+- `.github/workflows/release.yml`：仅 `v*.*.*` tag 触发，独立执行同等的 Python 3.12 完整检查与 Docker 冒烟。检查与 tag 格式校验通过后，发布 `linux/amd64`、`linux/arm64` 镜像到 Docker Hub 的 `laoyutang/l4d2-qq-bot`。
 - 在 GitHub 仓库 Settings → Secrets and variables → Actions → Secrets 中设置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_PASSWORD`，分别填写 Docker Hub 登录用户名和密码。账号须有目标仓库的推送权限；密码不写入 `.env`、业务配置或镜像层。工作流的 GitHub 权限仅保留 `contents: read`。
 - setup-uv 固定为已核实存在的 `v10.3.0`；uv 工具仍固定为 `0.11.7`。发布流程不依赖编辑器解析本地 reusable workflow，未绑定 GitHub 远端时也可以校验文件。
 - 镜像推送地址固定为 `docker.io/laoyutang/l4d2-qq-bot`；公开拉取需将 Docker Hub 仓库设为公开，私有仓库则须先登录有权限的账号。
+
+两份工作流只保留 Python 3.12 检查，与 Dockerfile 的 `PYTHON_VERSION=3.12` 默认值一致；发布构建仅传入 `VERSION`，没有覆盖 Python 版本。将来升级镜像 Python 时，同步调整两份检查矩阵和 tag 校验使用的 Python 版本。测试、lint、包构建与容器冒烟项目均保留。
+
+两份 Python 检查共用 [字体缓存脚本](../.github/scripts/chinese_font_cache.py)。它只读取 runner 现有的 `/etc/apt/sources.list.d/ubuntu.sources`，不更换镜像 URI，不查询无关第三方源；严格刷新并验证 APT 索引后取得候选包版本和 SHA256。`actions/cache@v5` 仅缓存 `${RUNNER_TEMP}/l4d2-qq-bot-font/fonts-noto-cjk.deb`，键包含操作系统、runner / APT 架构、Ubuntu 版本、包版本和 SHA256；不使用宽泛恢复键，不缓存系统索引、配置、凭据或作为校验依据的新鲜元数据。
+
+命中也会复核包的 SHA256、名称、版本及架构；未命中或坏缓存由 APT 以普通 runner 身份下载精确版本，校验后再安装本地包。坏缓存会在本次重新下载恢复；GitHub 缓存键不可覆盖，若同一坏缓存反复出现需删除对应缓存条目重建。索引、缓存恢复及安装步骤分别限时 3 / 3 / 6 分钟；APT 连接 / 数据超时 30 秒，下载最多两次、每次总限时 120 秒，安装总限时 90 秒。校验或获取失败会使检查失败，不跳过中文字体。默认分支建立的缓存可供后续发布读取；新包版本和冷缓存仍需正常下载。Dockerfile 的字体安装及镜像内容保持原样。
 
 每次发布只生成两个镜像标签：`latest` 和去掉 Git tag 的 `v` 前缀后的完整版本号。正式 tag `v0.1.0` 对应 `laoyutang/l4d2-qq-bot:latest` 与 `laoyutang/l4d2-qq-bot:0.1.0`；预发布 `v0.2.0-rc.1` 对应 `:latest` 与 `:0.2.0-rc.1`，同样更新 `latest`。
 
