@@ -88,6 +88,26 @@ def match_server(servers: list[ServerConfig], name: str) -> ServerConfig | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def match_rcon_target(
+    servers: list[ServerConfig], argument: str
+) -> tuple[ServerConfig | None, str]:
+    """Match the longest complete selector, with whitespace before any command."""
+    # A full selector can contain a shorter server name followed by whitespace.
+    # It still identifies that full server and needs a command, not a shorter target.
+    if server := match_server(servers, argument):
+        return server, ""
+    candidates = []
+    for index, character in enumerate(argument):
+        if character.isspace():
+            server = match_server(servers, argument[:index])
+            if server:
+                candidates.append((index, server, argument[index:].strip()))
+    if candidates:
+        _, server, command = max(candidates, key=lambda entry: entry[0])
+        return server, command
+    return None, ""
+
+
 def server_query_command(server: ServerConfig, servers: list[ServerConfig]) -> str:
     """Round-trip a configured selector instead of guessing from the A2S title."""
     for selector in (server.name, *server.aliases):

@@ -12,7 +12,14 @@ from urllib.parse import quote
 from .cards.markdown import markdown_card, markdown_text_pages
 from .cards.renderer import CardRenderer
 from .cards.views import clean_text, overview_card, server_card, voice_card
-from .commands import Command, CommandKind, match_server, parse_command, server_query_command
+from .commands import (
+    Command,
+    CommandKind,
+    match_rcon_target,
+    match_server,
+    parse_command,
+    server_query_command,
+)
 from .config import AppConfig, GroupConfig, ServerConfig, Settings
 from .domain import Card, CardLink, CardSection, VoiceStatus
 from .integrations.heybox import HeyboxVoiceClient
@@ -70,6 +77,10 @@ def route_event(payload: dict[str, Any], config: AppConfig) -> RoutedCommand | N
     server = None
     if command.kind == CommandKind.QUERY:
         server = match_server(group.servers, command.argument)
+        if server is None:
+            return None
+    if command.kind == CommandKind.RCON:
+        server, _ = match_rcon_target(group.servers, command.argument)
         if server is None:
             return None
     return RoutedCommand(message, group, command, server)
@@ -155,8 +166,12 @@ class BotApplication:
                 command is not None
                 and group is not None
                 and not pending
-                and command.kind in {CommandKind.QUERY, CommandKind.VOICE}
-                and match_server(group.servers, command.argument) is None
+                and (
+                    command.kind in {CommandKind.QUERY, CommandKind.VOICE}
+                    and match_server(group.servers, command.argument) is None
+                    or command.kind == CommandKind.RCON
+                    and match_rcon_target(group.servers, command.argument)[0] is None
+                )
             ):
                 return True
         except ValueError:

@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 
 from ..cards.views import clean_text
-from ..commands import Command, CommandKind, command_text, match_server
+from ..commands import Command, CommandKind, command_text, match_rcon_target, match_server
 from ..config import GroupConfig, ServerConfig
 from ..integrations.http import ExternalHTTP
 from ..integrations.panel import PanelClient, PanelError, file_size, selection
@@ -90,20 +90,6 @@ class ManagementService:
         ).hexdigest()[:12]
         logger.info("管理操作 %s action=%s success=%s", identity, action, success)
 
-    @staticmethod
-    def _rcon_target(servers: list[ServerConfig], argument: str):
-        # Only a complete, unique configured name/alias followed by whitespace is accepted.
-        candidates = []
-        for index, character in enumerate(argument):
-            if character.isspace():
-                server = match_server(servers, argument[:index])
-                if server:
-                    candidates.append((index, server, argument[index:].strip()))
-        if candidates:
-            _, server, command = max(candidates, key=lambda entry: entry[0])
-            return server, command
-        return match_server(servers, argument), ""
-
     async def start(
         self,
         command: Command,
@@ -114,6 +100,11 @@ class ManagementService:
         timeout_seconds: float = 90,
     ) -> None:
         self._pop(message)
+        server, text = None, ""
+        if command.kind == CommandKind.RCON:
+            server, text = match_rcon_target(group.servers, command.argument)
+            if server is None:
+                return
         if message.member_openid not in group.admin_openids:
             if command.kind != CommandKind.FLASH:
                 await reply.text("权限不足：您不在管理员列表中。")
@@ -145,9 +136,7 @@ class ManagementService:
             if server is None:
                 return
         else:
-            server, text = self._rcon_target(group.servers, command.argument)
             if server is None:
-                await reply.text("未找到指定名称的服务器。")
                 return
             if not text:
                 await reply.text("请输入要执行的指令。")

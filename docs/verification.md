@@ -1,5 +1,15 @@
 # 本次验收示例
 
+## 2026-10-27 “设置”普通聊天静默过滤
+
+- 根因为“设置”前缀被直接识别为 RCON，管理员校验又先于目标匹配。将原目标解析提取为共享纯函数，入队、路由与管理执行统一按本群配置名称 / 别名识别；未知目标不回复、不占用普通命令队列，合法目标仍检查权限、格式、凭据与超时。
+- 复用忽略空白和大小写、空白分隔指令、最长完整名称匹配规则。完整长名称未附指令时保留该目标，避免误把后半段当作短名称服务器的 RCON 指令；新增服务器仍通过配置页保存和热更新。
+- 新增 95 项参数化离线回归，覆盖两种 QQ 群事件、普通成员 / 管理员、普通聊天 / 未知及跨群名称、名称 / 别名 / 空白 / 大小写、无分隔符、缺少指令、前缀冲突、格式错误、队列容量、配置热更新移除目标和待确认会话取消；原 RCON 回复、密码遮蔽、凭据、超时、重启和闪传测试继续运行。
+- Windows / Python 3.12.14，复用已有锁定依赖环境及隔离源码（`PYTHONPATH=src`），使用 `uv run --frozen --no-sync` 执行。`ruff check .`、`ruff format --check .`、公开示例配置校验通过；针对 `test_rcon_target_routing.py`、`test_commands_config.py`、`test_group_commands.py`、`test_management.py`、`test_rcon_file_replies.py` 的 `pytest -W error` 共 182 项通过。合入 v0.2.3 上游后重新检查最终源码，Ruff、格式、示例配置及 7 项离线 demo 自检通过。
+- 合入最新 master `dead9f14` 的最终完整 `pytest -W error` 已运行结束：493 项通过、1 项既有失败。未修改基线也复现同一失败（312 通过、1 失败）：`test_configuration_web.py::test_save_validates_conflicts_and_applies_without_restart` 无条件断言 POSIX `0600`，Windows 返回 `0666`。本次未修改配置保存或该断言；Windows 完整测试不标为全通过。
+- 补丁版本为 v0.2.4，保留 v0.2.3 的指定成员 OpenID 功能。按现有约定由 Git tag 在 Docker 构建时注入包版本，源码 pyproject.toml / uv.lock 的基础版本保持不变；镜像构建发布结果以该 tag 的 GitHub Actions 为准。
+- 项目使用 Python，无 Go 模块，Go 测试与 race 检查不适用。离线验证未访问真实 QQ 或游戏服务器；未部署 / 重启、未修改实服配置、未发送真实 QQ 消息或 RCON，真实客户端效果待后续更新后确认。
+
 ## 2026-10-15 临时查询地址使用引用样式
 
 - 临时 `connect` 查询的地址与地图、人数、延迟合并为同一引用块，保留服务器标题、玩家列表及原正文。
