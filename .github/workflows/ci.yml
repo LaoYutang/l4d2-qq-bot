@@ -37,7 +37,7 @@ jobs:
           path: ${{ steps.font-package.outputs.cache-path }}
           key: ${{ steps.font-package.outputs.cache-key }}
       - name: Install Chinese font
-        timeout-minutes: 6
+        timeout-minutes: 8
         run: python3 .github/scripts/chinese_font_cache.py install
       - name: Install locked dependencies
         run: uv sync --frozen --group dev

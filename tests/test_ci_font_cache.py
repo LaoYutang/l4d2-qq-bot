@@ -139,28 +139,65 @@ def test_cold_warm_and_corrupt_cache_only_install_verified_bytes(monkeypatch, di
     archive = directory / "fonts-noto-cjk.deb"
     if state != "cold":
         archive.write_bytes(DATA if state == "warm" else b"corrupted cache")
-    downloads, installs = [], []
+    downloads, unpacks, installs = [], [], []
 
     def run(command, seconds=15, *, capture=False, cwd=None):
         if command[0] == "dpkg-deb":
             return "\n".join(METADATA[key] for key in ("Package", "Version", "Architecture"))
+        if command[0] == "dpkg-query":
+            return f"ii \n{METADATA['Version']}"
         if command[0] == "apt-get":
             assert command[-2:] == ["download", f"fonts-noto-cjk={METADATA['Version']}"]
             assert seconds == 120
             downloads.append(command)
             (Path(cwd) / "downloaded.deb").write_bytes(DATA)
+        elif command[:2] == ["sudo", "dpkg"]:
+            assert command[2:] == ["--unpack", str(archive)] and seconds == 30
+            assert archive.read_bytes() == DATA
+            unpacks.append(command)
         else:
             assert command[:3] == ["sudo", "env", "DEBIAN_FRONTEND=noninteractive"]
-            assert command[-1] == str(archive) and seconds == 90
+            assert command[-1] == f"fonts-noto-cjk={METADATA['Version']}" and seconds == 90
+            assert "--fix-broken" in command and "--no-remove" in command and len(unpacks) == 1
             assert archive.read_bytes() == DATA
             installs.append(command)
 
     monkeypatch.setattr(font_cache, "run", run)
     font_cache.install(directory)
     assert len(downloads) == (0 if state == "warm" else 1)
-    assert len(installs) == 1
+    assert len(unpacks) == len(installs) == 1
     assert archive.read_bytes() == DATA
     assert not list(directory.glob("font-download-*"))
+
+
+@pytest.mark.parametrize("status", ["iU ", "wrong-version"])
+def test_configured_package_status_and_version_are_required(monkeypatch, directory, status):
+    (directory / "fonts-noto-cjk.deb").write_bytes(DATA)
+
+    def run(command, *args, **kwargs):
+        if command[0] == "dpkg-deb":
+            return "\n".join(METADATA[key] for key in ("Package", "Version", "Architecture"))
+        if command[0] == "dpkg-query":
+            return f"{status}\n{METADATA['Version']}" if status == "iU " else "ii \nwrong-version"
+
+    monkeypatch.setattr(font_cache, "run", run)
+    with pytest.raises(ValueError, match="not fully configured"):
+        font_cache.install(directory)
+
+
+def test_dependency_configuration_failure_is_not_suppressed(monkeypatch, directory):
+    (directory / "fonts-noto-cjk.deb").write_bytes(DATA)
+    runner = Mock(
+        side_effect=[
+            "\n".join(METADATA[key] for key in ("Package", "Version", "Architecture")),
+            None,
+            subprocess.CalledProcessError(100, ["apt-get", "install", "--fix-broken"]),
+        ]
+    )
+    monkeypatch.setattr(font_cache, "run", runner)
+    with pytest.raises(subprocess.CalledProcessError):
+        font_cache.install(directory)
+    assert runner.call_count == 3
 
 
 @pytest.mark.parametrize("failure", ["sha256", "identity"])

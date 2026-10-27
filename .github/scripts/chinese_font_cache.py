@@ -168,6 +168,9 @@ def install(directory):
                 downloads[0].replace(archive)
                 break
     print(f"Installing verified font package {metadata['Version']}.")
+    # APT may prefer the repository over a same-version local archive. Unpack the
+    # verified bytes first, then let APT resolve dependencies and configure them.
+    run(["sudo", "dpkg", "--unpack", str(archive)], 30)
     run(
         [
             "sudo",
@@ -177,12 +180,22 @@ def install(directory):
             *source_options(),
             *APT_OPTIONS,
             "install",
+            "--fix-broken",
+            "--no-remove",
             "--no-install-recommends",
             "-y",
-            str(archive),
+            f"{PACKAGE}={metadata['Version']}",
         ],
         90,
     )
+    installed = run(
+        ["dpkg-query", "--show", "--showformat=${db:Status-Abbrev}\n${Version}", PACKAGE],
+        capture=True,
+    ).splitlines()
+    if installed != ["ii ", metadata["Version"]]:
+        raise ValueError(
+            "The verified font package was not fully configured at the expected version."
+        )
 
 
 if __name__ == "__main__":
