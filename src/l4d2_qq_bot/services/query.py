@@ -53,11 +53,10 @@ class QueryService:
                 target = await resolve_target(
                     endpoint, allow_private=allow_private, timeout_seconds=self.timeout
                 )
-                loop = asyncio.get_running_loop()
-                started = loop.time()
                 async with asyncio.timeout(self.timeout):
                     info = await a2s.ainfo((target.host, target.port), timeout=self.timeout)
-                ping_ms = round((loop.time() - started) * 1000)
+                # python-a2s reports ping in seconds, not the full INFO query duration.
+                ping_ms = round(info.ping * 1000)
             except TargetNotAllowed:
                 raise
             except (OSError, TimeoutError, a2s.BrokenMessageError, ValueError):

@@ -10,9 +10,13 @@ from l4d2_qq_bot.services import query
 from l4d2_qq_bot.services.query import QueryService, TargetNotAllowed, resolve_target
 
 
-def info(player_count=3):
+def info(player_count=3, ping=0.03):
     return SimpleNamespace(
-        server_name="Test server", map_name="c1m1_hotel", player_count=player_count, max_players=8
+        server_name="Test server",
+        map_name="c1m1_hotel",
+        player_count=player_count,
+        max_players=8,
+        ping=ping,
     )
 
 
@@ -98,3 +102,19 @@ async def test_overview_is_bounded_and_preserves_order(monkeypatch, pinned):
     )
     assert peak == 2
     assert [status.alias for status in statuses] == [str(index) for index in range(7)]
+
+
+@pytest.mark.parametrize("ping_seconds, expected_ms", [(0.0, 0), (0.0306, 31), (1.2346, 1235)])
+@pytest.mark.parametrize("include_players", [False, True])
+async def test_ping_uses_library_value_in_milliseconds(
+    monkeypatch, pinned, ping_seconds, expected_ms, include_players
+):
+    async def delayed_info(*args, **kwargs):
+        # Simulate extra query/challenge work that must not replace the library ping.
+        await asyncio.sleep(0.02)
+        return info(0, ping=ping_seconds)
+
+    monkeypatch.setattr(query.a2s, "ainfo", delayed_info)
+    status = await QueryService().query("public.example", include_players=include_players)
+    assert status.online
+    assert status.ping_ms == expected_ms
