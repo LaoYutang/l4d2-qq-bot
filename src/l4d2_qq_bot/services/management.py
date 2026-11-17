@@ -105,6 +105,10 @@ class ManagementService:
             server, text = match_rcon_target(group.servers, command.argument)
             if server is None:
                 return
+        elif command.kind == CommandKind.RESTART:
+            server, text = match_server(group.servers, command.argument), "_restart"
+            if server is None:
+                return
         if message.member_openid not in group.admin_openids:
             if command.kind != CommandKind.FLASH:
                 await reply.text("权限不足：您不在管理员列表中。")
@@ -128,14 +132,7 @@ class ManagementService:
                 PendingOperation("server", servers=servers, share_url=command.argument),
             )
             return
-        if command.kind == CommandKind.RESTART:
-            if not command.argument:
-                await reply.text("请输入服务器名称，例如：重启 主服务器")
-                return
-            server, text = match_server(group.servers, command.argument), "_restart"
-            if server is None:
-                return
-        else:
+        if command.kind != CommandKind.RESTART:
             if server is None:
                 return
             if not text:

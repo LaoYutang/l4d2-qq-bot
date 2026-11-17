@@ -75,7 +75,7 @@ def route_event(payload: dict[str, Any], config: AppConfig) -> RoutedCommand | N
     if group is None:
         return None
     server = None
-    if command.kind == CommandKind.QUERY:
+    if command.kind in {CommandKind.QUERY, CommandKind.RESTART}:
         server = match_server(group.servers, command.argument)
         if server is None:
             return None
@@ -167,7 +167,7 @@ class BotApplication:
                 and group is not None
                 and not pending
                 and (
-                    command.kind in {CommandKind.QUERY, CommandKind.VOICE}
+                    command.kind in {CommandKind.QUERY, CommandKind.VOICE, CommandKind.RESTART}
                     and match_server(group.servers, command.argument) is None
                     or command.kind == CommandKind.RCON
                     and match_rcon_target(group.servers, command.argument)[0] is None
